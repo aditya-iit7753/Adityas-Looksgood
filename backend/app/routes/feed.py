@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import get_current_user, get_user_subscription_plan
 from app.database import get_db
 from app.models import Comment, Follow, Like, Post, PostBookmark, PostShare, SponsoredAd, User, UserProfile
 from app.utils.commerce import serialize_product_tags
@@ -227,6 +227,9 @@ def get_feed(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    plan = get_user_subscription_plan(db, current_user.id)
+    show_ads = plan == "free"
+
     following_ids = [
         row.following_id for row in db.query(Follow).filter(Follow.follower_id == current_user.id).all()
     ]
@@ -246,7 +249,7 @@ def get_feed(
     content = [_serialize_post(post, current_user.id, db) for post in posts]
 
     ads = db.query(SponsoredAd).filter(SponsoredAd.is_active == True).all()  # noqa: E712
-    if ads and len(content) >= 2:
+    if show_ads and ads and len(content) >= 2:
         interest = _build_interest_profile(db, current_user.id)
         ad = random.choice(ads)
         content.insert(2, _serialize_ad(ad, _pick_ad_reason(interest)))
@@ -260,6 +263,9 @@ def get_smart_feed(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    plan = get_user_subscription_plan(db, current_user.id)
+    show_ads = plan == "free"
+
     following_ids = {
         row.following_id for row in db.query(Follow).filter(Follow.follower_id == current_user.id).all()
     }
@@ -282,7 +288,7 @@ def get_smart_feed(
     ]
 
     ads = db.query(SponsoredAd).filter(SponsoredAd.is_active == True).all()  # noqa: E712
-    if ads and len(content) >= 2:
+    if show_ads and ads and len(content) >= 2:
         ad = random.choice(ads)
         content.insert(2, _serialize_ad(ad, _pick_ad_reason(interest)))
 

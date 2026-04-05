@@ -30,6 +30,10 @@ export default function VideoPreviewScreen({ route, navigation }) {
       const nextCaption = `${improved || baseCaption} ${tags}`.trim().slice(0, 500);
       setCaption(nextCaption);
     } catch (error) {
+      if (Number(error?.response?.status) === 402) {
+        navigation.navigate("Paywall");
+        return;
+      }
       Alert.alert("AI caption failed", error?.message ?? "Please try again.");
     } finally {
       setCaptionLoading(false);

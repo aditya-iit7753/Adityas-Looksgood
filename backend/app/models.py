@@ -236,6 +236,18 @@ class UserSubscription(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AIGenerationUsage(Base):
+    __tablename__ = "ai_generation_usage"
+    __table_args__ = (UniqueConstraint("user_id", "period", name="uq_ai_generation_usage_user_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    period = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    used = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class VirtualMeetup(Base):
     __tablename__ = "virtual_meetups"
 

@@ -75,14 +75,20 @@ export default function FeedScreen({ navigation }) {
     setLoading(true);
     setError(null);
     try {
-      const [feedRes, notificationsRes, storiesRes] = await Promise.allSettled([
+      const [feedRes, notificationsRes, storiesRes, subscriptionRes] = await Promise.allSettled([
         API.get("/feed/ai"),
         API.get("/social/notifications"),
         API.get("/stories"),
+        API.get("/subscription/status"),
       ]);
 
+      const plan =
+        subscriptionRes.status === "fulfilled" ? String(subscriptionRes.value?.data?.plan || "free").toLowerCase() : "free";
+      const showAds = plan === "free";
+
       if (feedRes.status === "fulfilled") {
-        setFeed(Array.isArray(feedRes.value?.data) ? feedRes.value.data : []);
+        const rows = Array.isArray(feedRes.value?.data) ? feedRes.value.data : [];
+        setFeed(showAds ? rows : rows.filter((entry) => !entry?.sponsored));
       } else {
         throw feedRes.reason;
       }

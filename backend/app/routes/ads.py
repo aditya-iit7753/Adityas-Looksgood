@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import get_current_user, get_user_subscription_plan
 from app.database import get_db
 from app.models import SponsoredAd, User
 
@@ -28,6 +28,10 @@ def create_ad(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    plan = get_user_subscription_plan(db, current_user.id)
+    if plan not in {"creator", "pro"}:
+        raise HTTPException(status_code=403, detail="Upgrade to Pro/Creator to create sponsored ads")
+
     clean_video_url = str(video_url or "").strip()
     clean_brand = str(brand or "").strip()
     clean_cta = str(cta or "").strip()

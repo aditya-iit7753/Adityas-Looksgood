@@ -196,17 +196,27 @@ export default function AppAgentScreen({ navigation, route }) {
     [navigation, pushLog]
   );
 
-  const transcribeUri = useCallback(async (uri) => {
-    const formData = new FormData();
-    formData.append("audio", {
-      uri,
-      name: "lsg-command.m4a",
-      type: guessAudioMime(uri),
-    });
+  const transcribeUri = useCallback(
+    async (uri) => {
+      const formData = new FormData();
+      formData.append("audio", {
+        uri,
+        name: "lsg-command.m4a",
+        type: guessAudioMime(uri),
+      });
 
-    const transcribeRes = await API.post("/ai/lsg/transcribe", formData, { headers: { "Content-Type": "multipart/form-data" } });
-    return safeString(transcribeRes?.data?.transcript);
-  }, []);
+      try {
+        const transcribeRes = await API.post("/ai/lsg/transcribe", formData, { headers: { "Content-Type": "multipart/form-data" } });
+        return safeString(transcribeRes?.data?.transcript);
+      } catch (err) {
+        if (Number(err?.response?.status) === 402) {
+          navigation.navigate("Paywall");
+        }
+        throw err;
+      }
+    },
+    [navigation]
+  );
 
   const runCommandText = useCallback(
     async (text) => {
@@ -228,6 +238,10 @@ export default function AppAgentScreen({ navigation, route }) {
           setPendingAction(action);
         }
       } catch (err) {
+        if (Number(err?.response?.status) === 402) {
+          navigation.navigate("Paywall");
+          return;
+        }
         pushLog({ role: "assistant", text: err?.response?.data?.detail || err?.message || "Command failed." });
       } finally {
         setBusy(false);
@@ -251,6 +265,10 @@ export default function AppAgentScreen({ navigation, route }) {
         pushLog({ role: "assistant", text: reply, meta: { intent: res?.data?.intent, provider: res?.data?.provider } });
         await executeAction(action);
       } catch (err) {
+        if (Number(err?.response?.status) === 402) {
+          navigation.navigate("Paywall");
+          return;
+        }
         pushLog({ role: "assistant", text: err?.response?.data?.detail || err?.message || "Command failed." });
       } finally {
         setBusy(false);

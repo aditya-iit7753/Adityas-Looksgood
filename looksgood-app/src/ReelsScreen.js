@@ -154,9 +154,17 @@ export default function ReelsScreen({ navigation }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await API.get("/feed/");
-      const rows = Array.isArray(res.data) ? res.data : [];
-      setItems(rows.filter((x) => !x.sponsored && (x.media_url || x.video_url)));
+      const [feedRes, subscriptionRes] = await Promise.allSettled([API.get("/feed/"), API.get("/subscription/status")]);
+      if (feedRes.status !== "fulfilled") {
+        throw feedRes.reason;
+      }
+      const plan =
+        subscriptionRes.status === "fulfilled" ? String(subscriptionRes.value?.data?.plan || "free").toLowerCase() : "free";
+      const showAds = plan === "free";
+      const rows = Array.isArray(feedRes.value?.data) ? feedRes.value.data : [];
+      setItems(
+        rows.filter((x) => (showAds ? true : !x?.sponsored) && (x.media_url || x.video_url))
+      );
     } catch (err) {
       setError(err?.message || "Unable to load reels");
     } finally {

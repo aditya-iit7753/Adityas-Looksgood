@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from pydantic import BaseModel
 from app.config import GENERATED_STORAGE_DIR, OPENAI_API_KEY, OPENAI_MODEL
 from app.auth import get_current_user
+from app.ai_quota import consume_ai_generation
 from app.database import get_db
 from app.models import Post, Product, User
 from app.utils.ffmpeg_setup import ensure_ffmpeg
@@ -91,6 +92,13 @@ router = APIRouter()
 GENERATED_DIR = GENERATED_STORAGE_DIR
 GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 SUPPORTED_STUDIO_KINDS = {"image", "audio", "video", "content", "text"}
+
+
+def _consume_ai_credit(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return consume_ai_generation(db, current_user.id)
 
 try:
     from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter, ImageOps  # pyright: ignore[reportMissingImports]
@@ -183,7 +191,11 @@ class StudioPublishRequest(BaseModel):
 
 
 @router.post("/generate-look")
-async def generate_look(image: UploadFile = File(...)):
+async def generate_look(
+    image: UploadFile = File(...),
+    _quota: dict = Depends(_consume_ai_credit),
+):
+    _ = _quota
     temp_dir = Path(tempfile.gettempdir())
     path = str(temp_dir / f"{uuid.uuid4()}.jpg")
     with open(path, "wb") as f:
@@ -781,7 +793,9 @@ async def face_filter(
     request: Request,
     image: UploadFile = File(...),
     filter_name: str = Form(default="glow"),
+    _quota: dict = Depends(_consume_ai_credit),
 ):
+    _ = _quota
     payload = await image.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Image file is empty")
@@ -816,7 +830,9 @@ async def background_change(
     image: UploadFile = File(...),
     prompt: str = Form(default=""),
     style: str = Form(default=""),
+    _quota: dict = Depends(_consume_ai_credit),
 ):
+    _ = _quota
     payload = await image.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Image file is empty")
@@ -851,7 +867,9 @@ async def avatar_3d(
     request: Request,
     image: UploadFile = File(...),
     style: str = Form(default="toon"),
+    _quota: dict = Depends(_consume_ai_credit),
 ):
+    _ = _quota
     payload = await image.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Image file is empty")
@@ -1482,7 +1500,12 @@ def _openai_assistant_reply(prompt: str, history: list[dict] | None = None) -> s
 
 
 @router.post("/studio/generate", response_model=StudioGenerateResponse)
-async def studio_generate(data: StudioGenerateRequest, request: Request):
+async def studio_generate(
+    data: StudioGenerateRequest,
+    request: Request,
+    _quota: dict = Depends(_consume_ai_credit),
+):
+    _ = _quota
     kind = str(data.kind or "content").strip().lower()
     if kind not in SUPPORTED_STUDIO_KINDS:
         raise HTTPException(status_code=400, detail="Unsupported generation kind")
@@ -1504,7 +1527,9 @@ async def studio_generate_with_upload(
     style: str = Form(default=""),
     source_url: str = Form(default=""),
     file: UploadFile | None = File(default=None),
+    _quota: dict = Depends(_consume_ai_credit),
 ):
+    _ = _quota
     clean_kind = str(kind or "content").strip().lower()
     if clean_kind not in SUPPORTED_STUDIO_KINDS:
         raise HTTPException(status_code=400, detail="Unsupported generation kind")
@@ -1568,14 +1593,22 @@ def studio_publish(
 
 
 @router.post("/assistant", response_model=AssistantResponse)
-async def assistant_help(data: AssistantRequest):
+async def assistant_help(
+    data: AssistantRequest,
+    _quota: dict = Depends(_consume_ai_credit),
+):
+    _ = _quota
     reply = _openai_assistant_reply(data.prompt, data.history)
     provider = "openai" if OPENAI_API_KEY else "fallback"
     return {"reply": reply, "provider": provider}
 
 
 @router.post("/enhance-creation", response_model=EnhanceCreationResponse)
-async def enhance_creation(data: EnhanceCreationRequest):
+async def enhance_creation(
+    data: EnhanceCreationRequest,
+    _quota: dict = Depends(_consume_ai_credit),
+):
+    _ = _quota
     result = _openai_enhance_creation(
         prompt=data.prompt,
         caption=data.caption,
@@ -2051,8 +2084,10 @@ def _fallback_transcribe_audio(audio_bytes: bytes, filename: str, content_type: 
 @router.post("/lsg/transcribe")
 async def lsg_transcribe(
     audio: UploadFile = File(...),
+    _quota: dict = Depends(_consume_ai_credit),
     current_user: User = Depends(get_current_user),
 ):
+    _ = _quota
     _ = current_user
     audio_bytes = await audio.read()
     if not audio_bytes:
@@ -2083,8 +2118,10 @@ async def lsg_transcribe(
 @router.post("/lsg/command")
 async def lsg_command(
     data: LSGCommandRequest,
+    _quota: dict = Depends(_consume_ai_credit),
     current_user: User = Depends(get_current_user),
 ):
+    _ = _quota
     _ = current_user
     text = _safe_voice_text(data.text)
     if not text:

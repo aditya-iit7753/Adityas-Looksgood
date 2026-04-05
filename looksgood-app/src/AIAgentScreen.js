@@ -149,6 +149,15 @@ export default function AIAgentScreen({ navigation, route }) {
     navigation.navigate("Avatar3D");
   };
 
+  const maybeOpenPaywall = (err) => {
+    const status = Number(err?.response?.status);
+    if (status === 402) {
+      navigation.navigate("Paywall");
+      return true;
+    }
+    return false;
+  };
+
   const applyFaceFilter = async (asset, filterKey) => {
     if (!asset?.uri || isBusy) return;
     setToolBusy(true);
@@ -167,6 +176,7 @@ export default function AIAgentScreen({ navigation, route }) {
       setResult(res?.data || null);
       setMode("image");
     } catch (err) {
+      if (maybeOpenPaywall(err)) return;
       Alert.alert("Face filter failed", err?.message || "Could not apply face filter.");
     } finally {
       setToolBusy(false);
@@ -213,6 +223,7 @@ export default function AIAgentScreen({ navigation, route }) {
       setResult(res?.data || null);
       setMode("image");
     } catch (err) {
+      if (maybeOpenPaywall(err)) return;
       Alert.alert("Background change failed", err?.message || "Could not update background.");
     } finally {
       setToolBusy(false);
@@ -316,6 +327,7 @@ export default function AIAgentScreen({ navigation, route }) {
       }
       setResult(res?.data || null);
     } catch (err) {
+      if (maybeOpenPaywall(err)) return;
       Alert.alert("Generation failed", err?.message || "Could not generate content.");
     } finally {
       setGenerating(false);

@@ -50,6 +50,10 @@ export default function GenerateScreen({ route, navigation }) {
     } catch (error) {
       const message = String(error?.message || "").toLowerCase();
       const status = Number(error?.response?.status);
+      if (status === 402) {
+        navigation.navigate("Paywall");
+        return;
+      }
       const isModelDependencyFailure =
         status === 503 || message.includes("ai features unavailable") || message.includes("ultralytics");
       if (isModelDependencyFailure) {

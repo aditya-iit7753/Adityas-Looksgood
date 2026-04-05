@@ -5,7 +5,7 @@ import API from "./services/api";
 import { colors, fonts, radius } from "./theme";
 import { Screen } from "./ui";
 
-export default function CreatorChatScreen() {
+export default function CreatorChatScreen({ navigation }) {
   const [messages, setMessages] = useState([
     { id: "intro", role: "assistant", content: "Hey creator! Ask me for ideas, hooks, captions, or growth tips." },
   ]);
@@ -37,6 +37,9 @@ export default function CreatorChatScreen() {
         { id: `${Date.now()}-assistant`, role: "assistant", content: replyText },
       ]);
     } catch (_err) {
+      if (Number(_err?.response?.status) === 402 && navigation?.navigate) {
+        navigation.navigate("Paywall");
+      }
       setMessages((prev) => [
         ...prev,
         { id: `${Date.now()}-assistant`, role: "assistant", content: "Sorry, I could not answer that just now." },

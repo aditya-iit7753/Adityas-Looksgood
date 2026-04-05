@@ -220,6 +220,9 @@ export default function UploadScreen({ navigation, route }) {
       const tags = Array.isArray(res?.data?.hashtags) ? res.data.hashtags.slice(0, 4).join(" ") : "";
       return `${improved || fallback} ${tags}`.trim().slice(0, 500);
     } catch (_err) {
+      if (Number(_err?.response?.status) === 402) {
+        navigation.navigate("Paywall");
+      }
       return fallback.slice(0, 500);
     }
   };

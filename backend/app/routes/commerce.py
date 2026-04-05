@@ -6,9 +6,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.config import PUBLIC_BASE_URL, STRIPE_CANCEL_URL, STRIPE_SECRET_KEY, STRIPE_SUCCESS_URL, STRIPE_WEBHOOK_SECRET
+from app.config import (
+    PUBLIC_BASE_URL,
+    STRIPE_CANCEL_URL,
+    STRIPE_SECRET_KEY,
+    STRIPE_SUBSCRIPTION_PRICE_CREATOR,
+    STRIPE_SUBSCRIPTION_PRICE_PRO,
+    STRIPE_SUCCESS_URL,
+    STRIPE_WEBHOOK_SECRET,
+)
 from app.database import get_db
-from app.models import Order, OrderItem, Post, Product, User
+from app.models import Order, OrderItem, Post, Product, User, UserSubscription
 from app.utils.commerce import apply_post_product_tags, parse_product_ids, serialize_product, serialize_product_tags
 
 router = APIRouter()
@@ -409,6 +417,35 @@ def _finalize_paid_order(db: Session, order: Order, payment_intent_id: str | Non
             product.updated_at = datetime.utcnow()
 
 
+def _get_or_create_subscription(db: Session, user_id: int) -> UserSubscription:
+    row = db.query(UserSubscription).filter(UserSubscription.user_id == user_id).first()
+    if row:
+        return row
+    row = UserSubscription(user_id=user_id, plan="free", updated_at=datetime.utcnow())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _plan_from_subscription_object(obj: dict) -> str | None:
+    metadata = obj.get("metadata", {}) if isinstance(obj, dict) else {}
+    meta_plan = str(metadata.get("subscription_plan") or "").strip().lower()
+    if meta_plan in {"pro", "creator"}:
+        return meta_plan
+
+    # Infer plan from price id if metadata is missing.
+    items = obj.get("items", {}).get("data", []) if isinstance(obj, dict) else []
+    for item in items or []:
+        price = (item.get("price") or {}) if isinstance(item, dict) else {}
+        price_id = str(price.get("id") or "").strip()
+        if price_id and STRIPE_SUBSCRIPTION_PRICE_CREATOR and price_id == STRIPE_SUBSCRIPTION_PRICE_CREATOR:
+            return "creator"
+        if price_id and STRIPE_SUBSCRIPTION_PRICE_PRO and price_id == STRIPE_SUBSCRIPTION_PRICE_PRO:
+            return "pro"
+    return None
+
+
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     if not STRIPE_WEBHOOK_SECRET:
@@ -448,6 +485,41 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                     session_id=session.get("id") if isinstance(session, dict) else None,
                 )
                 db.commit()
+
+        # Subscription checkout (AI features / ads removal)
+        plan_raw = metadata.get("subscription_plan")
+        user_id_raw = metadata.get("user_id") or session.get("client_reference_id")
+        plan = str(plan_raw or "").strip().lower()
+        if plan in {"pro", "creator"}:
+            try:
+                user_id = int(user_id_raw)
+            except (TypeError, ValueError):
+                user_id = None
+            if user_id is not None:
+                row = _get_or_create_subscription(db, user_id)
+                row.plan = plan
+                row.updated_at = datetime.utcnow()
+                db.commit()
+
+    if event.get("type") in {"customer.subscription.updated", "customer.subscription.deleted"}:
+        subscription = event.get("data", {}).get("object", {})
+        metadata = subscription.get("metadata", {}) if isinstance(subscription, dict) else {}
+        user_id_raw = metadata.get("user_id")
+        try:
+            user_id = int(user_id_raw)
+        except (TypeError, ValueError):
+            user_id = None
+
+        if user_id is not None:
+            status = str(subscription.get("status") or "").strip().lower() if isinstance(subscription, dict) else ""
+            next_plan = _plan_from_subscription_object(subscription) or "free"
+            if status not in {"active", "trialing"}:
+                next_plan = "free"
+
+            row = _get_or_create_subscription(db, user_id)
+            row.plan = next_plan
+            row.updated_at = datetime.utcnow()
+            db.commit()
 
     if event.get("type") == "payment_intent.succeeded":
         intent = event.get("data", {}).get("object", {})
