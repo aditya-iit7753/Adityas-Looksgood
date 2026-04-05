@@ -1,0 +1,54 @@
+backend/.env.local
+backend/.env.local.*
+looksgood-app/.env.local
+.env
+.env.local
+.env.local.*
+.env.production
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases / artifacts
+*.db
+*.db-journal
+backend/generated/
+backend/app/generated/
+disk_test.txt
+size_test.bin
+tmp_patch_test.txt
+backend/write-test.txt
+
+# Virtualenvs
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# Node / React Native / Expo
+node_modules/
+looksgood-app/node_modules/
+.expo/
+looksgood-app/.expo/
+looksgood-app/.expo-shared/
+looksgood-app/dist/
+looksgood-app/build/
+
+# Mobile build artifacts
+*.aab
+*.apk
+looksgood-app/artifacts/
+looksgood-app/expo-android-*.txt
+
+# Local tooling downloads
+tools/platform-tools-fresh/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

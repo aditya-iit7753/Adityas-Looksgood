@@ -1,0 +1,8 @@
+{
+  "venvPath": "D:\\\\Looksbook",
+  "venv": "backend-venv",
+  "extraPaths": [
+    "backend"
+  ],
+  "pythonVersion": "3.12"
+}

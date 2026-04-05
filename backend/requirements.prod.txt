@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+sqlalchemy
+psycopg2-binary
+passlib[bcrypt]
+python-jose
+cloudinary
+python-multipart
+pillow
+ffmpeg-python
+SpeechRecognition
+pydub
+imageio-ffmpeg
+stripe

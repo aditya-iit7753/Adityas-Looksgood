@@ -1,0 +1,88 @@
+{
+  "expo": {
+    "name": "LooksGood",
+    "slug": "looksgood-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/branding/app-icon.png",
+    "scheme": "looksgoodapp",
+    "userInterfaceStyle": "automatic",
+    "jsEngine": "hermes",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.looksgood.app",
+      "icon": "./assets/branding/app-icon.png",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "LooksGood needs access to your photos so you can upload outfit images.",
+        "NSCameraUsageDescription": "LooksGood needs camera access for profile photos and video calls.",
+        "NSMicrophoneUsageDescription": "LooksGood needs microphone access for voice and video calls."
+      }
+    },
+    "android": {
+      "package": "com.looksgood.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#EAF1FF",
+        "foregroundImage": "./assets/branding/adaptive-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 3,
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/branding/app-icon.png"
+    },
+    "plugins": [
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.looksgood.app"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/branding/adaptive-foreground.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#EAF1FF",
+          "dark": {
+            "backgroundColor": "#132845"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "LooksGood needs access to your photos so you can upload outfit images."
+        }
+      ],
+      "@stripe/stripe-react-native"
+    ],
+    "extra": {
+      "apiUrl": "",
+      "webFrontendUrl": "",
+      "eas": {
+        "projectId": "dbe723e3-756c-4652-b3ff-225b9c6b269a"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "owner": "aditya.ss"
+  }
+}

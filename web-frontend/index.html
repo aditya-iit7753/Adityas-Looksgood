@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LooksGood Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape shape-a"></div>
+    <div class="bg-shape shape-b"></div>
+    <div class="bg-shape shape-c"></div>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>LooksGood</h1>
+          <p class="topbar-subtitle">AI-powered fashion creator dashboard</p>
+        </div>
+        <div id="statusChip" class="chip">Not Logged In</div>
+      </header>
+
+      <section class="card hero-banner">
+        <div>
+          <h2>Create. Style. Share.</h2>
+          <p>Publish reels, post stories, update your profile, and track engagement from one sleek workspace.</p>
+        </div>
+      </section>
+
+      <section id="authSection" class="card auth-card">
+        <h2>Login / Sign Up</h2>
+        <div class="tabs">
+          <button id="loginTab" class="tab active">Login</button>
+          <button id="signupTab" class="tab">Sign Up</button>
+        </div>
+
+        <label>Email</label>
+        <input id="emailInput" type="email" placeholder="you@example.com" />
+
+        <label>Password</label>
+        <input id="passwordInput" type="password" placeholder="********" />
+
+        <label id="confirmLabel" class="hidden">Confirm Password</label>
+        <input id="confirmInput" class="hidden" type="password" placeholder="********" />
+
+        <div class="row">
+          <button id="authBtn" class="btn btn-sky">Login</button>
+          <button id="forgotBtn" class="btn btn-red ghost">Forgot Password</button>
+        </div>
+      </section>
+
+      <section id="appSection" class="hidden">
+        <section class="card toolbar">
+          <input id="apiInput" value="http://127.0.0.1:8000" />
+          <button id="saveApiBtn" class="btn btn-grey symbol-btn">[API] Save</button>
+          <button id="loadFeedBtn" class="btn btn-sky symbol-btn">[F] Feed</button>
+          <button id="loadReelsBtn" class="btn btn-grey symbol-btn">[R] Reels</button>
+          <button id="loadUsersBtn" class="btn btn-grey symbol-btn">[D] Discover</button>
+          <button id="loadProfileBtn" class="btn btn-grey symbol-btn">[P] Profile</button>
+          <button id="loadNotiBtn" class="btn btn-grey symbol-btn">[N] Notifications</button>
+          <button id="logoutBtn" class="btn btn-red symbol-btn">[L] Logout</button>
+        </section>
+
+        <section id="reelFiltersWrap" class="card hidden">
+          <h3>Reel Filters</h3>
+          <div class="filter-bar">
+            <button class="filter-chip active" data-filter="all">All</button>
+            <button class="filter-chip" data-filter="street">Street</button>
+            <button class="filter-chip" data-filter="casual">Casual</button>
+            <button class="filter-chip" data-filter="formal">Formal</button>
+            <button class="filter-chip" data-filter="party">Party</button>
+            <button class="filter-chip" data-filter="minimal">Minimal</button>
+          </div>
+        </section>
+
+        <section class="grid">
+          <article class="card">
+            <h3>Create Post / Reel</h3>
+            <label>Caption</label>
+            <input id="captionInput" type="text" placeholder="Write your caption..." />
+            <label>Image (for post/reel/story)</label>
+            <input id="imageInput" type="file" accept="image/*" />
+            <div class="row">
+              <button id="postBtn" class="btn btn-sky">Post Reel</button>
+              <button id="storyBtn" class="btn btn-red">Create Story</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Edit Profile</h3>
+            <label>Display Name</label>
+            <input id="displayNameInput" type="text" placeholder="Your name" />
+            <label>Bio</label>
+            <textarea id="bioInput" rows="3" placeholder="Tell people about yourself"></textarea>
+            <label>Profile Photo</label>
+            <input id="avatarInput" type="file" accept="image/*" />
+            <button id="saveProfileBtn" class="btn btn-sky">Save Profile</button>
+          </article>
+        </section>
+
+        <section id="storiesWrap" class="card">
+          <h3>Stories</h3>
+          <div id="storiesList" class="stories"></div>
+        </section>
+
+        <section class="card">
+          <h3 id="listTitle">Feed</h3>
+          <div id="listRoot" class="list"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="reelModal" class="reel-modal hidden">
+      <div class="reel-modal-backdrop" id="reelModalBackdrop"></div>
+      <div class="reel-modal-dialog">
+        <button id="reelModalClose" class="reel-close-btn">Close</button>
+        <video id="reelModalVideo" controls autoplay playsinline></video>
+        <div class="reel-swipe-hint">Swipe up/down or use mouse wheel</div>
+        <div id="reelModalMeta" class="reel-modal-meta"></div>
+        <div id="reelModalStats" class="reel-modal-stats">Likes: 0 | Comments: 0 | Shares: 0</div>
+        <div class="reel-modal-engage">
+          <button id="reelModalLikeBtn" class="btn btn-grey">Like</button>
+          <button id="reelModalCommentBtn" class="btn btn-grey">Comment</button>
+          <button id="reelModalShareBtn" class="btn btn-grey">Share</button>
+        </div>
+        <div class="reel-comments">
+          <div id="reelCommentsList" class="reel-comments-list"></div>
+          <div class="reel-comment-compose">
+            <input id="reelCommentInput" type="text" placeholder="Write a comment..." />
+            <button id="reelCommentSendBtn" class="btn btn-sky">Send</button>
+          </div>
+        </div>
+        <div class="reel-modal-actions">
+          <span id="reelCounter" class="reel-counter">0 / 0</span>
+          <button id="reelPrevBtn" class="btn btn-grey">Up</button>
+          <button id="reelNextBtn" class="btn btn-sky">Down</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

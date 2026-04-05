@@ -1,0 +1,11 @@
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.local
+.env.*
+looksgood.db
+generated
+yolov8n.pt
