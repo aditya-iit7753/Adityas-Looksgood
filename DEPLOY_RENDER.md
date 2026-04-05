@@ -17,6 +17,9 @@ Render reads `render.yaml` from the **root of the Git repo**.
    - `looksgood-web` (static site)
 4. Click **Apply**
 
+Backend note:
+- The API service uses `backend/Dockerfile` so `ffmpeg` is available in production (Render’s default Python runtime doesn’t include it).
+
 ### 3) Set required environment variables (Render → looksgood-api → Environment)
 The Blueprint creates safe defaults, but you must set any feature keys you use:
 - `OPENAI_API_KEY` (if using AI endpoints)
@@ -51,4 +54,3 @@ For production builds, set:
 - `EXPO_PUBLIC_WEB_FRONTEND_URL=https://www.looksgood.com/`
 
 This repo’s `looksgood-app/eas.json` is updated to use `api.looksgood.com` for production.
-
