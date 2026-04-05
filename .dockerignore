@@ -1,0 +1,25 @@
+# Keep Docker build context small (important for Railway/GitHub builds)
+.git/
+.github/
+.vscode/
+.expo/
+**/__pycache__/
+**/*.pyc
+**/*.log
+
+# Mobile app + local tooling
+looksgood-app/
+tools/
+
+# Local artifacts
+*.db
+*.db-journal
+backend/generated/
+backend/app/generated/
+looksgood.dev.db
+looksgood.dev.db-journal
+
+# Docs not needed in image
+DEPLOY*.md
+deploy/
+
