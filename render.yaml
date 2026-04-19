@@ -13,7 +13,7 @@ services:
     dockerfilePath: backend/Dockerfile
     healthCheckPath: /api/health
     autoDeployTrigger: commit
-    # Optional: use a dedicated API domain
+    # Optional custom domain. The service is also reachable at its Render URL.
     domains:
       - api.looksgoods.com
     disk:
@@ -32,15 +32,33 @@ services:
           name: looksgood-postgres
           property: connectionString
       - key: PUBLIC_BASE_URL
-        value: https://api.looksgoods.com
+        value: https://looksgood-api.onrender.com
       - key: CORS_ORIGINS
-        value: https://looksgoods.com,https://www.looksgoods.com
+        value: https://looksgood-web.onrender.com,https://looksgoods.com,https://www.looksgoods.com
       - key: CORS_ALLOW_CREDENTIALS
         value: "false"
-      # Optional (set in Render dashboard):
-      # - OPENAI_API_KEY
-      # - CLOUDINARY_*
-      # - STRIPE_*
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: STRIPE_SUCCESS_URL
+        value: https://looksgood-web.onrender.com/?sub=success
+      - key: STRIPE_CANCEL_URL
+        value: https://looksgood-web.onrender.com/?sub=cancel
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_SUBSCRIPTION_PRICE_PRO
+        sync: false
+      - key: STRIPE_SUBSCRIPTION_PRICE_CREATOR
+        sync: false
 
   # Static web frontend (web-frontend/)
   - name: looksgood-web
@@ -51,6 +69,16 @@ services:
     domains:
       - looksgoods.com
       - www.looksgoods.com
+    envVars:
+      - key: PUBLIC_API_URL
+        value: https://looksgood-api.onrender.com/api
+    headers:
+      - path: /service-worker.js
+        name: Cache-Control
+        value: no-cache
+      - path: /config.js
+        name: Cache-Control
+        value: no-cache
     routes:
       - type: rewrite
         source: /*
