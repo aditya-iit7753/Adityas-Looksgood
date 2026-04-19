@@ -1,4 +1,4 @@
-services:
+﻿services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -31,8 +31,26 @@ services:
     volumes:
       - backend_generated:/app/generated
 
+  web_bootstrap:
+    image: nginx:1.27-alpine
+    profiles: ["bootstrap"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    env_file:
+      - ./.env.production
+    environment:
+      DOMAIN: ${DOMAIN}
+      CERT_NAME: ${CERT_NAME}
+    volumes:
+      - ./web-frontend:/usr/share/nginx/html:ro
+      - ./deploy/nginx.http.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - certbot-www:/var/www/certbot
   web:
     image: nginx:1.27-alpine
+    profiles: ["https"]
     restart: unless-stopped
     depends_on:
       - backend
@@ -67,3 +85,5 @@ volumes:
   backend_generated:
   certbot-etc:
   certbot-www:
+
+

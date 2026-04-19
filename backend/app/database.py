@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -6,6 +7,15 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import DATABASE_URL
 
+
+def _normalize_database_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + url[len("postgres://"):]
+    if url.startswith("postgresql://") and "+psycopg2" not in url.split("://", 1)[0]:
+        return "postgresql+psycopg2://" + url[len("postgresql://"):]
+    return url
+
+DATABASE_URL = _normalize_database_url(DATABASE_URL)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 if DATABASE_URL.startswith("sqlite"):
@@ -115,7 +125,16 @@ def init_db():
     # Import models here so SQLAlchemy sees tables before create_all.
     from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    _ensure_post_columns()
-    _ensure_story_columns()
-    _ensure_user_settings_columns()
+    attempts = 1 if DATABASE_URL.startswith("sqlite") else 8
+
+    for attempt in range(1, attempts + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            _ensure_post_columns()
+            _ensure_story_columns()
+            _ensure_user_settings_columns()
+            return
+        except Exception as exc:
+            if attempt >= attempts:
+                raise
+            time.sleep(min(2 * attempt, 10))

@@ -1699,9 +1699,159 @@ def smart_coach(
     }
 
 
+LSG_ALLOWED_ROUTES = [
+    "Feed",
+    "Reels",
+    "Discover",
+    "Profile",
+    "Chat",
+    "ChatRoom",
+    "Settings",
+    "Upload",
+    "Notifications",
+    "AIAgent",
+    "Trends",
+    "AppAgent",
+    "StyleDNA",
+    "Generate",
+    "CreatorChat",
+    "CloseFriends",
+    "ARFilters",
+    "Avatar3D",
+    "WebFrontend",
+    "Preview",
+]
+LSG_ROUTE_KEYWORDS: list[tuple[str, str]] = [
+    ("reels", "Reels"),
+    ("profile", "Profile"),
+    ("discover", "Discover"),
+    ("people", "Discover"),
+    ("chat room", "Chat"),
+    ("chat", "Chat"),
+    ("message", "Chat"),
+    ("settings", "Settings"),
+    ("notification", "Notifications"),
+    ("upload", "Upload"),
+    ("new post", "Upload"),
+    ("feed", "Feed"),
+    ("home", "Feed"),
+    ("creative studio", "AIAgent"),
+    ("ai studio", "AIAgent"),
+    ("assistant", "AIAgent"),
+    ("style dna", "StyleDNA"),
+    ("style", "StyleDNA"),
+    ("trends", "Trends"),
+    ("trend", "Trends"),
+    ("voice agent", "AppAgent"),
+    ("command center", "AppAgent"),
+    ("agent", "AppAgent"),
+    ("creator chat", "CreatorChat"),
+    ("close friends", "CloseFriends"),
+    ("ar filters", "ARFilters"),
+    ("ar filter", "ARFilters"),
+    ("avatar", "Avatar3D"),
+    ("web ui", "WebFrontend"),
+    ("web", "WebFrontend"),
+    ("preview", "Preview"),
+]
+LSG_MCP_TOOLS = [
+    {
+        "name": "navigation.navigate",
+        "description": "Open a specific route inside the app.",
+        "input_schema": {"type": "object", "properties": {"route": {"type": "string", "enum": LSG_ALLOWED_ROUTES}}},
+    },
+    {
+        "name": "profile.updateBio",
+        "description": "Update the current user's profile bio.",
+        "input_schema": {"type": "object", "properties": {"bio": {"type": "string"}}, "required": ["bio"]},
+    },
+    {
+        "name": "profile.updateSettings",
+        "description": "Update one or more account settings flags.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "is_private_account": {"type": "boolean"},
+                "show_activity_status": {"type": "boolean"},
+                "allow_message_requests": {"type": "boolean"},
+            },
+        },
+    },
+    {
+        "name": "social.followUser",
+        "description": "Follow a user by username/handle.",
+        "input_schema": {"type": "object", "properties": {"username": {"type": "string"}}, "required": ["username"]},
+    },
+    {
+        "name": "social.sendMessage",
+        "description": "Open chat and optionally send a direct message.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"username": {"type": "string"}, "message": {"type": "string"}},
+            "required": ["username"],
+        },
+    },
+    {
+        "name": "social.reactToPost",
+        "description": "Like, save, unsave, comment, or share a post/reel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": ["like_post", "save_post", "unsave_post", "comment_post", "share_post"],
+                },
+                "post_id": {"type": "integer"},
+                "comment": {"type": "string"},
+            },
+            "required": ["action_type", "post_id"],
+        },
+    },
+    {
+        "name": "notifications.markRead",
+        "description": "Mark all notifications as read.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "studio.proposeFeature",
+        "description": "Turn a user request into a feature proposal spec.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "problem": {"type": "string"},
+                "proposal": {"type": "string"},
+                "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+                "developer_notes": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+    },
+]
+LSG_ACTION_TO_TOOL = {
+    "navigate": "navigation.navigate",
+    "create_post": "navigation.navigate",
+    "create_reel": "navigation.navigate",
+    "open_profile_photo": "navigation.navigate",
+    "update_bio": "profile.updateBio",
+    "update_settings": "profile.updateSettings",
+    "follow_user": "social.followUser",
+    "send_message": "social.sendMessage",
+    "like_post": "social.reactToPost",
+    "save_post": "social.reactToPost",
+    "unsave_post": "social.reactToPost",
+    "comment_post": "social.reactToPost",
+    "share_post": "social.reactToPost",
+    "mark_notifications_read": "notifications.markRead",
+    "propose_feature": "studio.proposeFeature",
+}
+LSG_ALLOWED_ACTION_TYPES = set(LSG_ACTION_TO_TOOL.keys()) | {"unknown"}
+LSG_ALLOWED_INTENTS = LSG_ALLOWED_ACTION_TYPES | {"multi_step"}
+
+
 class LSGCommandRequest(BaseModel):
     text: str
     screen: str | None = None
+    mode: Literal["standard", "hands_free", "mcp"] = "standard"
 
 
 def _safe_voice_text(value: str) -> str:
@@ -1974,6 +2124,524 @@ def _openai_lsg_parse(text: str, screen: str | None = None) -> dict | None:
     return None
 
 
+def _safe_route_name(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    for route in LSG_ALLOWED_ROUTES:
+        if route.lower() == candidate.lower():
+            return route
+    return ""
+
+
+def _safe_username(value: Any) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]", "", str(value or "").strip().lstrip("@"))[:80]
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _normalize_feature_spec(value: Any) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+
+    title = str(value.get("title") or "").strip()[:120]
+    problem = str(value.get("problem") or "").strip()[:360]
+    proposal = str(value.get("proposal") or "").strip()[:700]
+    acceptance = [str(item).strip()[:220] for item in value.get("acceptance_criteria") or [] if str(item).strip()][:5]
+    notes = [str(item).strip()[:220] for item in value.get("developer_notes") or [] if str(item).strip()][:5]
+
+    if not title and not proposal:
+        return None
+    if not title:
+        title = "Voice Feature Request"
+    if not problem:
+        problem = "User asked for a new feature through voice command."
+    if not proposal:
+        proposal = "Implement the requested feature with MVP scope and safe defaults."
+    if not acceptance:
+        acceptance = [
+            "Feature can be triggered from the app with clear feedback.",
+            "Errors are handled with user-friendly fallback copy.",
+            "Feature respects existing auth and permission rules.",
+        ]
+    if not notes:
+        notes = [
+            "Start with MVP scope and iterate after testing.",
+            "Reuse existing endpoints and components where possible.",
+        ]
+
+    return {
+        "title": title,
+        "problem": problem,
+        "proposal": proposal,
+        "acceptance_criteria": acceptance,
+        "developer_notes": notes,
+    }
+
+
+def _build_fallback_feature_spec(raw_prompt: str) -> dict:
+    cleaned = _safe_voice_text(raw_prompt)
+    stripped = re.sub(
+        r"^(?:please\s+)?(?:create|add|build|make|implement|design)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    base = stripped or cleaned or "new feature for the app"
+    title_words = re.findall(r"[a-zA-Z0-9]+", base)[:6]
+    title = " ".join(word.capitalize() for word in title_words) or "Voice Feature Request"
+    return {
+        "title": title[:120],
+        "problem": "User requested a feature through the app voice agent.",
+        "proposal": base[:700],
+        "acceptance_criteria": [
+            "Feature has a clear user flow and confirmation feedback.",
+            "Request can be completed without breaking existing screens.",
+            "Feature errors are recoverable and user-friendly.",
+        ],
+        "developer_notes": [
+            "Ship MVP first, then iterate on polish.",
+            "Prefer reusing existing API contracts and screen components.",
+        ],
+    }
+
+
+def _extract_post_id(text: str) -> int | None:
+    match = re.search(r"(?:post|reel)\s*#?(\d{1,10})", str(text or ""), flags=re.IGNORECASE)
+    if not match:
+        return None
+    return _coerce_positive_int(match.group(1))
+
+
+def _is_feature_request_text(text: str) -> bool:
+    lower = str(text or "").lower()
+    if any(
+        phrase in lower
+        for phrase in ("new feature", "feature request", "create feature", "build feature", "add feature", "make feature")
+    ):
+        return True
+    return "feature" in lower and any(token in lower for token in ("create", "build", "add", "make", "implement"))
+
+
+def _extract_feature_request_text(text: str) -> str:
+    raw = _safe_voice_text(text)
+    patterns = [
+        r"(?:create|build|add|make|implement)\s+(?:a\s+|an\s+)?(?:new\s+)?feature(?:\s+for\s+the\s+app)?\s*(.+)$",
+        r"(?:feature request|new feature)\s*[:\-]?\s*(.+)$",
+    ]
+    for pattern in patterns:
+        extracted = _extract_after_keyword(raw, pattern)
+        if extracted:
+            return extracted
+    return raw
+
+
+def _split_multistep_voice_command(text: str) -> list[str]:
+    safe = _safe_voice_text(text)
+    if not safe:
+        return []
+    parts = re.split(r"\b(?:and then|then|after that|next)\b", safe, flags=re.IGNORECASE)
+    normalized = [part.strip(" .,!?:;") for part in parts if part and part.strip(" .,!?:;")]
+    return normalized[:4] if normalized else [safe]
+
+
+def _normalize_lsg_action(raw_action: Any) -> dict:
+    if not isinstance(raw_action, dict):
+        return {"type": "unknown"}
+
+    action_type = str(raw_action.get("type") or "").strip().lower()
+    if action_type == "open_screen":
+        action_type = "navigate"
+    if action_type not in LSG_ALLOWED_ACTION_TYPES:
+        return {"type": "unknown"}
+
+    normalized: dict[str, Any] = {"type": action_type}
+
+    if action_type == "navigate":
+        route = _safe_route_name(raw_action.get("route"))
+        if not route:
+            return {"type": "unknown"}
+        normalized["route"] = route
+        return normalized
+
+    if action_type in {"create_post", "create_reel", "open_profile_photo", "mark_notifications_read", "unknown"}:
+        return normalized
+
+    if action_type == "update_bio":
+        bio = str(raw_action.get("bio") or "").strip()[:500]
+        if not bio:
+            return {"type": "unknown"}
+        normalized["bio"] = bio
+        return normalized
+
+    if action_type == "update_settings":
+        for key in ("is_private_account", "show_activity_status", "allow_message_requests"):
+            if isinstance(raw_action.get(key), bool):
+                normalized[key] = bool(raw_action.get(key))
+        return normalized if len(normalized) > 1 else {"type": "unknown"}
+
+    if action_type in {"follow_user", "send_message"}:
+        username = _safe_username(raw_action.get("username"))
+        if not username:
+            return {"type": "unknown"}
+        normalized["username"] = username
+        if action_type == "send_message":
+            message = str(raw_action.get("message") or "").strip()[:800]
+            if message:
+                normalized["message"] = message
+        return normalized
+
+    if action_type in {"like_post", "save_post", "unsave_post", "comment_post", "share_post"}:
+        post_id = _coerce_positive_int(raw_action.get("post_id"))
+        if post_id is None:
+            return {"type": "unknown"}
+        normalized["post_id"] = post_id
+        if action_type == "comment_post":
+            comment = str(raw_action.get("comment") or raw_action.get("text") or "").strip()[:500]
+            if not comment:
+                return {"type": "unknown"}
+            normalized["comment"] = comment
+        if action_type == "share_post":
+            share_text = str(raw_action.get("share_text") or "").strip()[:280]
+            if share_text:
+                normalized["share_text"] = share_text
+        return normalized
+
+    if action_type == "propose_feature":
+        feature_spec = _normalize_feature_spec(raw_action.get("feature_spec"))
+        if feature_spec:
+            normalized["feature_spec"] = feature_spec
+        return normalized
+
+    return {"type": "unknown"}
+
+
+def _normalize_lsg_actions(raw_actions: Any, fallback_action: Any = None) -> list[dict]:
+    actions: list[dict] = []
+    if isinstance(raw_actions, list):
+        for entry in raw_actions:
+            normalized = _normalize_lsg_action(entry)
+            if normalized.get("type") != "unknown":
+                actions.append(normalized)
+    if not actions and isinstance(fallback_action, dict):
+        normalized = _normalize_lsg_action(fallback_action)
+        if normalized.get("type") != "unknown":
+            actions.append(normalized)
+    if not actions:
+        actions.append({"type": "unknown"})
+    return actions[:5]
+
+
+def _build_tool_plan(actions: list[dict]) -> list[dict]:
+    plan: list[dict] = []
+    for index, action in enumerate(actions, start=1):
+        action_type = str(action.get("type") or "unknown")
+        args = {key: value for key, value in action.items() if key != "type"}
+        plan.append(
+            {
+                "step": index,
+                "tool": LSG_ACTION_TO_TOOL.get(action_type, "core.unknown"),
+                "action_type": action_type,
+                "arguments": args,
+            }
+        )
+    return plan
+
+
+def _fallback_lsg_extra_parse_single(text: str, screen: str | None = None) -> dict:
+    q = _safe_voice_text(text)
+    lower = q.lower()
+    current_screen = str(screen or "").strip() or "unknown"
+
+    comment_match = re.search(
+        r"(?:comment(?: on)?|reply(?: to)?)\s+(?:post|reel)?\s*#?(\d+)\s*(?:with|saying|say)?\s*(.+)$",
+        q,
+        flags=re.IGNORECASE,
+    )
+    if comment_match:
+        post_id = _coerce_positive_int(comment_match.group(1))
+        comment = str(comment_match.group(2) or "").strip(" .,!?:;\"'")[:500]
+        if post_id and comment:
+            action = {"type": "comment_post", "post_id": post_id, "comment": comment}
+            return {"intent": "comment_post", "confidence": 0.74, "actions": [action], "reply": f"Commenting on post {post_id}."}
+
+    post_id = _extract_post_id(q)
+    if post_id and ("like post" in lower or "like reel" in lower or lower.startswith("like ")):
+        action = {"type": "like_post", "post_id": post_id}
+        return {"intent": "like_post", "confidence": 0.72, "actions": [action], "reply": f"Liking post {post_id}."}
+
+    if post_id and ("save post" in lower or "bookmark" in lower):
+        action = {"type": "save_post", "post_id": post_id}
+        return {"intent": "save_post", "confidence": 0.72, "actions": [action], "reply": f"Saving post {post_id}."}
+
+    if post_id and ("unsave" in lower or "remove bookmark" in lower):
+        action = {"type": "unsave_post", "post_id": post_id}
+        return {"intent": "unsave_post", "confidence": 0.7, "actions": [action], "reply": f"Unsaving post {post_id}."}
+
+    if post_id and ("share post" in lower or "share reel" in lower):
+        action = {"type": "share_post", "post_id": post_id}
+        return {"intent": "share_post", "confidence": 0.7, "actions": [action], "reply": f"Sharing post {post_id}."}
+
+    if "mark notifications read" in lower or "clear notifications" in lower or "read all notifications" in lower:
+        action = {"type": "mark_notifications_read"}
+        return {
+            "intent": "mark_notifications_read",
+            "confidence": 0.74,
+            "actions": [action],
+            "reply": "Marking all notifications as read.",
+        }
+
+    for key, route in LSG_ROUTE_KEYWORDS:
+        if key in lower:
+            action = {"type": "navigate", "route": route}
+            return {"intent": "navigate", "confidence": 0.68, "actions": [action], "reply": f"Opening {route}."}
+
+    unknown = {"type": "unknown", "screen": current_screen}
+    return {
+        "intent": "unknown",
+        "confidence": 0.3,
+        "actions": [unknown],
+        "reply": "I did not fully catch that.",
+    }
+
+
+def _fallback_lsg_mcp_parse(text: str, screen: str | None = None) -> dict:
+    q = _safe_voice_text(text)
+    if not q:
+        unknown = {"type": "unknown", "screen": str(screen or "").strip() or "unknown"}
+        return {
+            "intent": "unknown",
+            "confidence": 0.25,
+            "action": unknown,
+            "actions": [unknown],
+            "reply": "Please say a command.",
+            "tool_plan": _build_tool_plan([unknown]),
+            "requires_confirmation": False,
+            "feature_spec": None,
+        }
+
+    if _is_feature_request_text(q):
+        feature_spec = _build_fallback_feature_spec(_extract_feature_request_text(q))
+        action = {"type": "propose_feature", "feature_spec": feature_spec}
+        return {
+            "intent": "propose_feature",
+            "confidence": 0.66,
+            "action": action,
+            "actions": [action],
+            "reply": f"Created a feature proposal draft: {feature_spec['title']}.",
+            "tool_plan": _build_tool_plan([action]),
+            "requires_confirmation": False,
+            "feature_spec": feature_spec,
+        }
+
+    fragments = _split_multistep_voice_command(q)
+    parsed_actions: list[dict] = []
+    fragment_replies: list[str] = []
+    confidence_values: list[float] = []
+
+    for fragment in fragments:
+        base = _fallback_lsg_parse(fragment, screen=screen)
+        extra = _fallback_lsg_extra_parse_single(fragment, screen=screen)
+
+        if str(base.get("intent") or "unknown") == "unknown" and str(extra.get("intent") or "unknown") != "unknown":
+            candidate = extra
+        else:
+            candidate = base
+            if str(base.get("intent") or "unknown") == "unknown":
+                candidate = extra
+
+        candidate_actions = _normalize_lsg_actions(candidate.get("actions"), fallback_action=candidate.get("action"))
+        for action in candidate_actions:
+            if action.get("type") != "unknown":
+                parsed_actions.append(action)
+        if candidate.get("reply"):
+            fragment_replies.append(str(candidate.get("reply") or "").strip())
+        try:
+            confidence_values.append(float(candidate.get("confidence", 0.5)))
+        except (TypeError, ValueError):
+            confidence_values.append(0.5)
+
+    if not parsed_actions:
+        unknown = {"type": "unknown", "screen": str(screen or "").strip() or "unknown"}
+        return {
+            "intent": "unknown",
+            "confidence": 0.35,
+            "action": unknown,
+            "actions": [unknown],
+            "reply": "I did not fully catch that. Try: open trends, follow @username, comment on post 12 amazing look.",
+            "tool_plan": _build_tool_plan([unknown]),
+            "requires_confirmation": False,
+            "feature_spec": None,
+        }
+
+    parsed_actions = parsed_actions[:5]
+    intent = "multi_step" if len(parsed_actions) > 1 else str(parsed_actions[0].get("type") or "unknown")
+    avg_confidence = sum(confidence_values) / max(1, len(confidence_values))
+    reply = (
+        f"I planned {len(parsed_actions)} steps and I am ready to run them."
+        if len(parsed_actions) > 1
+        else (fragment_replies[0] if fragment_replies else "Done.")
+    )
+    tool_plan = _build_tool_plan(parsed_actions)
+
+    return {
+        "intent": intent if intent in LSG_ALLOWED_INTENTS else "unknown",
+        "confidence": max(0.0, min(1.0, avg_confidence)),
+        "action": parsed_actions[0],
+        "actions": parsed_actions,
+        "reply": reply,
+        "tool_plan": tool_plan,
+        "requires_confirmation": len(parsed_actions) > 1,
+        "feature_spec": None,
+    }
+
+
+def _openai_lsg_mcp_parse(text: str, screen: str | None = None) -> dict | None:
+    if not OPENAI_API_KEY:
+        return None
+
+    tool_catalog = [
+        {"name": tool.get("name"), "description": tool.get("description"), "input_schema": tool.get("input_schema")}
+        for tool in LSG_MCP_TOOLS
+    ]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the LooksGood MCP voice planner. "
+                "Return ONLY JSON with keys: intent, confidence, reply, actions, requires_confirmation, feature_spec. "
+                "actions must be an array with action objects. Each action must include `type`. "
+                f"Allowed action types: {', '.join(sorted(LSG_ALLOWED_ACTION_TYPES))}. "
+                f"Allowed routes for navigate: {', '.join(LSG_ALLOWED_ROUTES)}. "
+                "When user asks to create/add/build a feature, include a `propose_feature` action and a filled feature_spec."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "text": _safe_voice_text(text),
+                    "screen": str(screen or "").strip(),
+                    "tool_catalog": tool_catalog,
+                }
+            ),
+        },
+    ]
+    payload_candidates = [
+        {
+            "model": OPENAI_MODEL,
+            "messages": messages,
+            "temperature": 0.05,
+            "response_format": {"type": "json_object"},
+        },
+        {"model": OPENAI_MODEL, "messages": messages, "temperature": 0.12},
+    ]
+
+    for payload in payload_candidates:
+        req = urllib.request.Request(
+            url="https://api.openai.com/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            continue
+
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        parsed = _extract_json_object(content)
+        if not parsed:
+            try:
+                parsed = json.loads(str(content or "").strip())
+            except (TypeError, ValueError, json.JSONDecodeError):
+                parsed = None
+        if not parsed:
+            continue
+
+        actions = _normalize_lsg_actions(parsed.get("actions"), fallback_action=parsed.get("action"))
+        intent = str(parsed.get("intent") or "").strip().lower()
+        if intent not in LSG_ALLOWED_INTENTS:
+            intent = "multi_step" if len(actions) > 1 else str(actions[0].get("type") or "unknown")
+        if intent not in LSG_ALLOWED_INTENTS:
+            intent = "unknown"
+
+        try:
+            confidence = float(parsed.get("confidence"))
+        except (TypeError, ValueError):
+            confidence = 0.55
+
+        feature_spec = _normalize_feature_spec(parsed.get("feature_spec"))
+        if not feature_spec and any(str(action.get("type") or "") == "propose_feature" for action in actions):
+            feature_spec = _build_fallback_feature_spec(text)
+
+        return {
+            "intent": intent,
+            "confidence": max(0.0, min(1.0, confidence)),
+            "action": actions[0],
+            "actions": actions,
+            "reply": str(parsed.get("reply") or "Done.").strip(),
+            "tool_plan": _build_tool_plan(actions),
+            "requires_confirmation": bool(parsed.get("requires_confirmation")) or len(actions) > 1,
+            "feature_spec": feature_spec,
+        }
+
+    return None
+
+
+def _plan_lsg_command(text: str, screen: str | None = None) -> tuple[dict, str]:
+    parsed = _openai_lsg_mcp_parse(text=text, screen=screen)
+    provider = "openai" if parsed else "fallback"
+    if not parsed:
+        parsed = _fallback_lsg_mcp_parse(text=text, screen=screen)
+
+    actions = _normalize_lsg_actions(parsed.get("actions"), fallback_action=parsed.get("action"))
+    intent = str(parsed.get("intent") or "").strip().lower()
+    if intent not in LSG_ALLOWED_INTENTS:
+        intent = "multi_step" if len(actions) > 1 else str(actions[0].get("type") or "unknown")
+    if intent not in LSG_ALLOWED_INTENTS:
+        intent = "unknown"
+
+    try:
+        confidence = float(parsed.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0.4
+
+    feature_spec = _normalize_feature_spec(parsed.get("feature_spec"))
+    if not feature_spec and any(str(action.get("type") or "") == "propose_feature" for action in actions):
+        feature_spec = _build_fallback_feature_spec(text)
+
+    return (
+        {
+            "intent": intent,
+            "confidence": max(0.0, min(1.0, confidence)),
+            "action": actions[0],
+            "actions": actions,
+            "reply": str(parsed.get("reply") or "Done.").strip(),
+            "tool_plan": _build_tool_plan(actions),
+            "requires_confirmation": bool(parsed.get("requires_confirmation")) or len(actions) > 1,
+            "feature_spec": feature_spec,
+        },
+        provider,
+    )
+
+
 def _build_openai_multipart_audio_body(
     audio_bytes: bytes,
     filename: str,
@@ -2127,17 +2795,69 @@ async def lsg_command(
     if not text:
         raise HTTPException(status_code=400, detail="Voice command text is required")
 
-    parsed = _openai_lsg_parse(text=text, screen=data.screen)
-    provider = "openai" if parsed else "fallback"
-    if not parsed:
-        parsed = _fallback_lsg_parse(text=text, screen=data.screen)
+    parsed, provider = _plan_lsg_command(text=text, screen=data.screen)
+    actions = _normalize_lsg_actions(parsed.get("actions"), fallback_action=parsed.get("action"))
+    try:
+        confidence = float(parsed.get("confidence", 0.3))
+    except (TypeError, ValueError):
+        confidence = 0.3
 
     return {
         "transcript": text,
-        "intent": parsed.get("intent", "unknown"),
-        "confidence": float(parsed.get("confidence", 0.3)),
-        "action": parsed.get("action") if isinstance(parsed.get("action"), dict) else {"type": "unknown"},
+        "intent": str(parsed.get("intent") or "unknown"),
+        "confidence": max(0.0, min(1.0, confidence)),
+        "action": actions[0],
+        "actions": actions,
+        "tool_plan": parsed.get("tool_plan") if isinstance(parsed.get("tool_plan"), list) else _build_tool_plan(actions),
         "reply": str(parsed.get("reply") or "Done.").strip(),
+        "requires_confirmation": bool(parsed.get("requires_confirmation")) or len(actions) > 1,
+        "feature_spec": _normalize_feature_spec(parsed.get("feature_spec")),
+        "provider": provider,
+        "mode": str(data.mode or "standard"),
+    }
+
+
+@router.get("/lsg/mcp/tools")
+def lsg_mcp_tools(
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return {
+        "server": "looksbook-lsg-mcp",
+        "version": "1.0",
+        "tools": LSG_MCP_TOOLS,
+    }
+
+
+@router.post("/lsg/mcp/plan")
+async def lsg_mcp_plan(
+    data: LSGCommandRequest,
+    _quota: dict = Depends(_consume_ai_credit),
+    current_user: User = Depends(get_current_user),
+):
+    _ = _quota
+    _ = current_user
+    text = _safe_voice_text(data.text)
+    if not text:
+        raise HTTPException(status_code=400, detail="Voice command text is required")
+
+    parsed, provider = _plan_lsg_command(text=text, screen=data.screen)
+    actions = _normalize_lsg_actions(parsed.get("actions"), fallback_action=parsed.get("action"))
+    try:
+        confidence = float(parsed.get("confidence", 0.3))
+    except (TypeError, ValueError):
+        confidence = 0.3
+
+    return {
+        "transcript": text,
+        "intent": str(parsed.get("intent") or "unknown"),
+        "confidence": max(0.0, min(1.0, confidence)),
+        "action": actions[0],
+        "actions": actions,
+        "tool_plan": parsed.get("tool_plan") if isinstance(parsed.get("tool_plan"), list) else _build_tool_plan(actions),
+        "reply": str(parsed.get("reply") or "Done.").strip(),
+        "requires_confirmation": bool(parsed.get("requires_confirmation")) or len(actions) > 1,
+        "feature_spec": _normalize_feature_spec(parsed.get("feature_spec")),
         "provider": provider,
     }
 

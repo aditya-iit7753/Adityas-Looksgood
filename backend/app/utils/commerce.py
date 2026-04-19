@@ -1,34 +1,38 @@
-﻿import json
+import json
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models import PostProductTag, Product
 
 
-def parse_product_ids(raw) -> list[int]:
+def parse_product_ids(raw: Any) -> list[int]:
     if raw is None:
         return []
 
+    values: list[Any]
     if isinstance(raw, (list, tuple, set)):
         values = list(raw)
     else:
         text = str(raw).strip()
         if not text:
             return []
-        values = None
+        parsed_values: list[Any] | None = None
         if text.startswith("["):
             try:
                 parsed = json.loads(text)
                 if isinstance(parsed, list):
-                    values = parsed
+                    parsed_values = parsed
             except (TypeError, ValueError, json.JSONDecodeError):
-                values = None
-        if values is None:
+                parsed_values = None
+        if parsed_values is None:
             values = [item.strip() for item in text.replace(";", ",").split(",") if item.strip()]
+        else:
+            values = parsed_values
 
     output: list[int] = []
-    seen = set()
+    seen: set[int] = set()
     for value in values:
         try:
             parsed = int(str(value).strip())

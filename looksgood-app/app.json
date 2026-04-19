@@ -74,8 +74,8 @@
       "@stripe/stripe-react-native"
     ],
     "extra": {
-      "apiUrl": "",
-      "webFrontendUrl": "",
+      "apiUrl": "https://looksgood-api-production.up.railway.app/api",
+      "webFrontendUrl": "https://looksgood-web-production.up.railway.app/",
       "eas": {
         "projectId": "dbe723e3-756c-4652-b3ff-225b9c6b269a"
       }

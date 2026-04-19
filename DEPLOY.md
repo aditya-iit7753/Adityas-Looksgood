@@ -11,7 +11,7 @@ git clone <your-repo-url> looksbook
 cd looksbook
 ```
 
-## 2b) DNS (required for looksgood.com)
+## 2b) DNS (required for looksgoods.com)
 Set these records at your DNS provider:
 - `A` record `@` -> your VPS public IPv4 (example: `185.38.109.209`)
 - `A` record `www` -> your VPS public IPv4
@@ -31,21 +31,27 @@ Edit `.env.production` and set:
 - `CORS_ORIGINS` to your real domain(s)
 - `DOMAIN` + `CERT_NAME` for HTTPS
 
-## 4) Start production stack
+## 4) Start stack (HTTP bootstrap)
+Start the stack in HTTP-only mode so certbot can complete the first issuance.
+
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.production --profile bootstrap up -d --build
 ```
 
 ## 4b) Issue the first HTTPS certificate (one-time)
 After DNS points to your server, run:
+
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm certbot certonly \
   --webroot -w /var/www/certbot \
   -d $DOMAIN -d www.$DOMAIN --cert-name $CERT_NAME \
   --email you@example.com --agree-tos --no-eff-email
-docker compose -f docker-compose.prod.yml --env-file .env.production restart web
-```
 
+# Switch to HTTPS-enabled nginx
+docker compose -f docker-compose.prod.yml --env-file .env.production --profile https up -d --build
+# Stop the bootstrap HTTP-only nginx
+docker compose -f docker-compose.prod.yml --env-file .env.production stop web_bootstrap
+```
 ## 5) Verify services
 ```bash
 docker compose -f docker-compose.prod.yml ps
@@ -79,3 +85,4 @@ docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml restart backend
 docker compose -f docker-compose.prod.yml down
 ```
+

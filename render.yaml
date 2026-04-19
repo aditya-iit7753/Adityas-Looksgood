@@ -15,7 +15,7 @@ services:
     autoDeployTrigger: commit
     # Optional: use a dedicated API domain
     domains:
-      - api.looksgood.com
+      - api.looksgoods.com
     disk:
       name: generated
       mountPath: /app/generated
@@ -32,9 +32,9 @@ services:
           name: looksgood-postgres
           property: connectionString
       - key: PUBLIC_BASE_URL
-        value: https://api.looksgood.com
+        value: https://api.looksgoods.com
       - key: CORS_ORIGINS
-        value: https://looksgood.com,https://www.looksgood.com
+        value: https://looksgoods.com,https://www.looksgoods.com
       - key: CORS_ALLOW_CREDENTIALS
         value: "false"
       # Optional (set in Render dashboard):
@@ -49,8 +49,8 @@ services:
     staticPublishPath: web-frontend
     autoDeployTrigger: commit
     domains:
-      - looksgood.com
-      - www.looksgood.com
+      - looksgoods.com
+      - www.looksgoods.com
     routes:
       - type: rewrite
         source: /*

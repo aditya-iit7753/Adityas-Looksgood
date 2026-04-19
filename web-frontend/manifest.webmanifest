@@ -1,0 +1,17 @@
+{
+  "name": "LooksGood Web",
+  "short_name": "LooksGood",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eff7ff",
+  "theme_color": "#0f2e46",
+  "description": "LooksGood creator dashboard for web with feed, profile, reels, stories, and virtual rooms.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

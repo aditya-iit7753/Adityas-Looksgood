@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
+from typing import cast
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -35,6 +36,7 @@ async def create_story(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    current_user_id = cast(int, current_user.id)
     story_visibility = _normalize_visibility(visibility)
     clean_caption = caption.strip()[:500]
     clean_status_text = status_text.strip()[:500]
@@ -56,7 +58,7 @@ async def create_story(
         raise HTTPException(status_code=400, detail="Add an image or a status text")
 
     story = Story(
-        user_id=current_user.id,
+        user_id=current_user_id,
         media_url=media_url or "",
         caption=clean_caption,
         status_text=clean_status_text,
@@ -67,13 +69,18 @@ async def create_story(
     db.commit()
     db.refresh(story)
 
+    story_id = cast(int, story.id)
+    story_media_url = str(cast(str | None, story.media_url) or "")
+    story_visibility_value = str(cast(str | None, story.visibility) or "public")
+    story_status_text = str(cast(str | None, story.status_text) or "")
+
     return {
         "status": "created",
-        "story_id": story.id,
+        "story_id": story_id,
         "media_url": media_url,
-        "visibility": story.visibility,
-        "status_text": story.status_text,
-        "story_type": "status" if not story.media_url else "media",
+        "visibility": story_visibility_value,
+        "status_text": story_status_text,
+        "story_type": "status" if story_media_url == "" else "media",
     }
 
 
@@ -83,10 +90,11 @@ def list_active_stories(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    current_user_id = cast(int, current_user.id)
     now = datetime.now(timezone.utc)
     close_friend_owner_ids = {
         int(row[0])
-        for row in db.query(CloseFriend.owner_user_id).filter(CloseFriend.friend_user_id == current_user.id).all()
+        for row in db.query(CloseFriend.owner_user_id).filter(CloseFriend.friend_user_id == current_user_id).all()
     }
     stories = (
         db.query(Story)
@@ -96,29 +104,33 @@ def list_active_stories(
     )
     data = []
     for story in stories:
-        story_visibility = _normalize_visibility(story.visibility or "public", strict=False)
-        if story_visibility == "private" and story.user_id != current_user.id:
+        story_id = cast(int, story.id)
+        story_user_id = cast(int, story.user_id)
+        story_media_url = str(cast(str | None, story.media_url) or "")
+        story_visibility = _normalize_visibility(cast(str | None, story.visibility), strict=False)
+
+        if story_visibility == "private" and story_user_id != current_user_id:
             continue
         if (
             story_visibility == "close_friends"
-            and story.user_id != current_user.id
-            and story.user_id not in close_friend_owner_ids
+            and story_user_id != current_user_id
+            and story_user_id not in close_friend_owner_ids
         ):
             continue
 
-        user = db.query(User).filter(User.id == story.user_id).first()
+        user = db.query(User).filter(User.id == story_user_id).first()
         data.append(
             {
-                "id": story.id,
-                "user_id": story.user_id,
+                "id": story_id,
+                "user_id": story_user_id,
                 "user": user.email.split("@")[0] if user else "creator",
                 "caption": story.caption,
-                "media_url": story.media_url,
-                "status_text": story.status_text or "",
+                "media_url": story_media_url,
+                "status_text": str(cast(str | None, story.status_text) or ""),
                 "visibility": story_visibility,
-                "story_type": "status" if not story.media_url else "media",
+                "story_type": "status" if story_media_url == "" else "media",
                 "expires_at": story.expires_at.isoformat(),
-                "is_me": story.user_id == current_user.id,
+                "is_me": story_user_id == current_user_id,
             }
         )
         if len(data) >= 300:
@@ -131,9 +143,10 @@ def list_close_friends(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    current_user_id = cast(int, current_user.id)
     rows = (
         db.query(CloseFriend)
-        .filter(CloseFriend.owner_user_id == current_user.id)
+        .filter(CloseFriend.owner_user_id == current_user_id)
         .order_by(CloseFriend.created_at.desc())
         .all()
     )
@@ -167,7 +180,8 @@ def add_close_friend(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if user_id == current_user.id:
+    current_user_id = cast(int, current_user.id)
+    if user_id == current_user_id:
         raise HTTPException(status_code=400, detail="You cannot add yourself")
 
     target = db.query(User).filter(User.id == user_id).first()
@@ -176,13 +190,13 @@ def add_close_friend(
 
     existing = (
         db.query(CloseFriend)
-        .filter(CloseFriend.owner_user_id == current_user.id, CloseFriend.friend_user_id == user_id)
+        .filter(CloseFriend.owner_user_id == current_user_id, CloseFriend.friend_user_id == user_id)
         .first()
     )
     if existing:
         return {"status": "exists", "user_id": user_id}
 
-    db.add(CloseFriend(owner_user_id=current_user.id, friend_user_id=user_id))
+    db.add(CloseFriend(owner_user_id=current_user_id, friend_user_id=user_id))
     db.commit()
     return {"status": "added", "user_id": user_id}
 
@@ -193,9 +207,10 @@ def remove_close_friend(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    current_user_id = cast(int, current_user.id)
     existing = (
         db.query(CloseFriend)
-        .filter(CloseFriend.owner_user_id == current_user.id, CloseFriend.friend_user_id == user_id)
+        .filter(CloseFriend.owner_user_id == current_user_id, CloseFriend.friend_user_id == user_id)
         .first()
     )
     if existing:

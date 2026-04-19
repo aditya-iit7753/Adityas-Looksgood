@@ -3,8 +3,10 @@ import { WebView } from "react-native-webview";
 import { WEB_FRONTEND_URL } from "./services/api";
 import { colors } from "./theme";
 
-export default function WebFrontendScreen() {
-  if (!WEB_FRONTEND_URL) {
+export default function WebFrontendScreen({ route }) {
+  const targetUrl = String(route?.params?.url || WEB_FRONTEND_URL || "").trim();
+
+  if (!targetUrl) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg, paddingHorizontal: 24 }}>
         <Text style={{ color: colors.text, textAlign: "center" }}>
@@ -17,7 +19,7 @@ export default function WebFrontendScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <WebView
-        source={{ uri: WEB_FRONTEND_URL }}
+        source={{ uri: targetUrl }}
         startInLoadingState
         renderLoading={() => (
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>

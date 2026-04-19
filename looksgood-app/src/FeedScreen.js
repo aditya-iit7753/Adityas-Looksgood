@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -31,7 +30,7 @@ function isVideoUrl(uri) {
   return VIDEO_PATTERN.test(value) || value.includes("/video/upload/") || value.includes("/video/");
 }
 
-export default function FeedScreen({ navigation }) {
+export default function FeedScreen({ navigation, route }) {
   const [feed, setFeed] = useState([]);
   const [stories, setStories] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -53,10 +52,12 @@ export default function FeedScreen({ navigation }) {
     { key: "reels", icon: "film", route: "Reels" },
     { key: "ai", icon: "sparkles", route: "AIAgent" },
     { key: "agent", icon: "mic", route: "AppAgent" },
+    { key: "rooms", icon: "videocam", route: "VirtualRooms" },
     { key: "trends", icon: "trending-up", route: "Trends" },
     { key: "dna", icon: "finger-print", route: "StyleDNA" },
     { key: "profile", icon: "person-circle", route: "Profile" },
     { key: "chat", icon: "chatbubble-ellipses", route: "Chat" },
+    { key: "connection", icon: "radio", route: "ConnectionCenter" },
   ];
 
   // Shrink requested: -120px normal, -90px compact.
@@ -70,6 +71,9 @@ export default function FeedScreen({ navigation }) {
     () => feed.filter((entry) => String(entry?.media_url || entry?.video_url || "").trim()),
     [feed]
   );
+  const connectionHint = String(route?.params?.connectionHint || "").trim();
+  const issueText = error || connectionHint;
+  const showsConnectionHelp = /api unreachable|network error|fetch failed|server error|timed out|timeout/i.test(issueText);
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
@@ -106,12 +110,16 @@ export default function FeedScreen({ navigation }) {
       } else {
         setStories([]);
       }
+
+      if (route?.params?.connectionHint) {
+        navigation.setParams({ connectionHint: undefined });
+      }
     } catch (err) {
       setError(err?.message || "Unable to load feed");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [navigation, route?.params?.connectionHint]);
 
   useEffect(() => {
     loadFeed();
@@ -260,15 +268,24 @@ export default function FeedScreen({ navigation }) {
           </View>
         </Animated.View>
 
-        {error ? (
+        {issueText ? (
           <View style={styles.errorBox}>
-            <Ionicons name="warning-outline" size={18} color={colors.danger} />
-            <Text style={styles.errorText} numberOfLines={1}>
-              {error}
-            </Text>
-            <Pressable onPress={loadFeed} style={styles.errorRetryIcon}>
-              <Ionicons name="refresh-outline" size={18} color={colors.primary} />
-            </Pressable>
+            <View style={styles.errorHeader}>
+              <Ionicons name="warning-outline" size={18} color={colors.danger} />
+              <Text style={styles.errorText}>{issueText}</Text>
+            </View>
+            <View style={styles.errorActions}>
+              <Pressable onPress={loadFeed} style={styles.errorActionBtn}>
+                <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+                <Text style={styles.errorActionText}>Retry</Text>
+              </Pressable>
+              {showsConnectionHelp ? (
+                <Pressable onPress={() => navigation.navigate("ConnectionCenter")} style={styles.errorActionBtn}>
+                  <Ionicons name="radio-outline" size={16} color={colors.primary} />
+                  <Text style={styles.errorActionText}>Connection Center</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : null}
 
@@ -520,25 +537,40 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 10,
+  },
+  errorHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 10,
   },
   errorText: {
-    flex: 1,
     color: colors.subtext,
     fontFamily: fonts.body,
     fontSize: 12,
   },
-  errorRetryIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  errorActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  errorActionBtn: {
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  errorActionText: {
+    color: colors.text,
+    fontFamily: fonts.body,
+    fontWeight: "700",
+    fontSize: 12,
   },
   feedViewport: {
     alignSelf: "stretch",

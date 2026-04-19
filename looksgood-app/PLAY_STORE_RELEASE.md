@@ -8,11 +8,16 @@ Create/update `looksgood-app/.env.production`:
 EXPO_PUBLIC_API_URL=https://your-domain.com/api
 EXPO_PUBLIC_API_URLS=https://your-domain.com/api,https://your-domain.com
 EXPO_PUBLIC_WEB_FRONTEND_URL=https://your-domain.com/
+EXPO_PUBLIC_ANDROID_PLAY_BILLING_READY=false
 ```
 
-Current LooksGood production URLs:
-- API: https://api.looksgood.com/api
-- Web: https://www.looksgood.com/
+Current test-ready public URLs (active now):
+- API: https://looksgood-api-production.up.railway.app/api
+- Web: https://looksgood-web-production.up.railway.app/
+
+When custom DNS is fully live, switch these back to:
+- API: https://api.looksgoods.com/api
+- Web: https://www.looksgoods.com/
 
 Rules for production:
 - Use public `https://` URLs only.
@@ -20,11 +25,15 @@ Rules for production:
 
 For EAS cloud builds, also set these as EAS project secrets or profile env vars.
 
+Android Play-safe setting:
+- Keep `EXPO_PUBLIC_ANDROID_PLAY_BILLING_READY=false` until you finish Google Play Billing or RevenueCat setup.
+- With that flag off, Android builds do not offer in-app digital subscription checkout.
+
 ## 2) Verify app config before build
 
 - App id: `com.looksgood.app`
 - Version name: `1.0.0`
-- Android version code: `3` (must increase for each new Play upload)
+- Android version code: managed by EAS (`autoIncrement: true`, `appVersionSource: remote`)
 - Sensitive/legacy permissions blocked:
   - `android.permission.SYSTEM_ALERT_WINDOW`
   - `android.permission.READ_EXTERNAL_STORAGE`
@@ -56,11 +65,12 @@ If you are submitting manually:
 4. Add release notes and save.
 5. Review and roll out to internal testers.
 
-To get the `.aab`, use the “Application Archive URL” from the EAS build details page.
+To get the `.aab`, use the "Application Archive URL" from the EAS build details page.
 
 ## 5) Complete Play Console listing and policy items
 
 - Privacy Policy URL
+  - Use: `https://looksgood-web-production.up.railway.app/privacy.html` for the current Railway domain
 - App access instructions (if login is required)
 - Data safety form
 - Content rating questionnaire

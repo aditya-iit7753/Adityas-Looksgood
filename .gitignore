@@ -44,9 +44,15 @@ looksgood-app/build/
 *.apk
 looksgood-app/artifacts/
 looksgood-app/expo-android-*.txt
+looksgood-app/.gradle-local*/
 
 # Local tooling downloads
 tools/platform-tools-fresh/
+package/
+codex-auth-check/
+.railway-web-staging/
+railway-cli-*.tgz
+railway-cli-debug.txt
 
 # OS / editor
 .DS_Store

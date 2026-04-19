@@ -16,18 +16,43 @@
 
     <main class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="topbar-copy">
           <h1>LooksGood</h1>
-          <p class="topbar-subtitle">AI-powered fashion creator dashboard</p>
+          <p class="topbar-subtitle">Web studio for your fashion feed, creator profile, reels, stories, and virtual rooms.</p>
         </div>
-        <div id="statusChip" class="chip">Not Logged In</div>
+        <div class="status-stack">
+          <div id="statusChip" class="chip">Not Logged In</div>
+          <div id="connectionChip" class="chip chip-muted">Checking API</div>
+        </div>
       </header>
 
       <section class="card hero-banner">
-        <div>
+        <div class="hero-copy">
           <h2>Create. Style. Share.</h2>
-          <p>Publish reels, post stories, update your profile, and track engagement from one sleek workspace.</p>
+          <p>Run LooksGood from the browser with live feed tools, creator editing, social engagement, and community rooms in one place.</p>
         </div>
+        <div class="hero-actions">
+          <button id="heroFeedBtn" class="btn btn-sky">Open Feed</button>
+          <button id="heroMeetupsBtn" class="btn btn-glass">Open Virtual Rooms</button>
+        </div>
+      </section>
+
+      <section class="mini-grid">
+        <article class="card stat-card">
+          <div class="stat-label">Surface</div>
+          <div class="stat-value">Web App</div>
+          <p>Use LooksGood from any desktop or mobile browser with the same live API.</p>
+        </article>
+        <article class="card stat-card">
+          <div class="stat-label">Backend</div>
+          <div id="apiHeadline" class="stat-value">Connecting...</div>
+          <p id="apiHeadlineSub">Checking live API reachability and runtime routing.</p>
+        </article>
+        <article class="card stat-card">
+          <div class="stat-label">Community</div>
+          <div class="stat-value">Virtual Rooms</div>
+          <p>Host meetups, open instant rooms, and keep your creator audience active on web too.</p>
+        </article>
       </section>
 
       <section id="authSection" class="card auth-card">
@@ -54,14 +79,40 @@
 
       <section id="appSection" class="hidden">
         <section class="card toolbar">
-          <input id="apiInput" value="http://127.0.0.1:8000" />
+          <input id="apiInput" placeholder="API base URL" />
           <button id="saveApiBtn" class="btn btn-grey symbol-btn">[API] Save</button>
+          <button id="checkApiBtn" class="btn btn-grey symbol-btn">[C] Check</button>
           <button id="loadFeedBtn" class="btn btn-sky symbol-btn">[F] Feed</button>
           <button id="loadReelsBtn" class="btn btn-grey symbol-btn">[R] Reels</button>
           <button id="loadUsersBtn" class="btn btn-grey symbol-btn">[D] Discover</button>
           <button id="loadProfileBtn" class="btn btn-grey symbol-btn">[P] Profile</button>
           <button id="loadNotiBtn" class="btn btn-grey symbol-btn">[N] Notifications</button>
+          <button id="loadMeetupsBtn" class="btn btn-grey symbol-btn">[V] Rooms</button>
           <button id="logoutBtn" class="btn btn-red symbol-btn">[L] Logout</button>
+        </section>
+
+        <section class="card connection-panel">
+          <div class="section-head">
+            <div>
+              <h3>Connection Center</h3>
+              <p class="topbar-subtitle">Runtime API routing, health checks, and live frontend targeting.</p>
+            </div>
+            <button id="openPrivacyBtn" class="btn btn-grey">Privacy</button>
+          </div>
+          <div class="connection-grid">
+            <div class="status-line">
+              <span class="status-label">Current API</span>
+              <strong id="connectionApiValue">Checking...</strong>
+            </div>
+            <div class="status-line">
+              <span class="status-label">Status</span>
+              <strong id="connectionStateValue">Unknown</strong>
+            </div>
+            <div class="status-line">
+              <span class="status-label">Details</span>
+              <span id="connectionMessageValue" class="status-copy">Waiting for first check.</span>
+            </div>
+          </div>
         </section>
 
         <section id="reelFiltersWrap" class="card hidden">
@@ -101,15 +152,61 @@
           </article>
         </section>
 
+        <section class="grid">
+          <article class="card">
+            <h3>Virtual Rooms</h3>
+            <label>Meetup Title</label>
+            <input id="meetupTitleInput" type="text" placeholder="Creator hangout, look review, styling chat..." />
+            <label>Description</label>
+            <textarea id="meetupDescriptionInput" rows="3" placeholder="What will this meetup be about?"></textarea>
+            <label>Schedule</label>
+            <input id="meetupScheduleInput" type="datetime-local" />
+            <div class="row">
+              <button id="createMeetupBtn" class="btn btn-sky">Create Meetup</button>
+              <button id="refreshMeetupsBtn" class="btn btn-grey">Refresh Rooms</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Web Access</h3>
+            <p class="helper-copy">This browser version uses the same live API as the mobile app and works well for feed browsing, posting, profile edits, notifications, and community rooms.</p>
+            <div class="status-line compact">
+              <span class="status-label">Frontend</span>
+              <strong id="frontendUrlValue">Detecting...</strong>
+            </div>
+            <div class="status-line compact">
+              <span class="status-label">Session</span>
+              <strong id="sessionStateValue">Guest</strong>
+            </div>
+            <div class="row">
+              <button id="refreshSessionBtn" class="btn btn-grey">Refresh Session</button>
+              <button id="openFeedFromUtilityBtn" class="btn btn-sky">Load Feed</button>
+            </div>
+          </article>
+        </section>
+
         <section id="storiesWrap" class="card">
           <h3>Stories</h3>
           <div id="storiesList" class="stories"></div>
+        </section>
+
+        <section id="meetupsWrap" class="card">
+          <h3>Virtual Meetup Board</h3>
+          <div id="meetupsList" class="list"></div>
         </section>
 
         <section class="card">
           <h3 id="listTitle">Feed</h3>
           <div id="listRoot" class="list"></div>
         </section>
+
+        <footer class="card" style="margin-top: 14px; display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap">
+          <div>
+            <strong>Privacy</strong>
+            <p class="topbar-subtitle" style="margin-top: 4px">Review how LooksGood handles account data, uploads, camera, microphone, and support requests.</p>
+          </div>
+          <a href="./privacy.html" class="btn btn-grey" style="text-decoration: none; display: inline-flex; align-items: center">Privacy Policy</a>
+        </footer>
       </section>
     </main>
 
@@ -141,6 +238,8 @@
       </div>
     </div>
 
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <script src="./config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

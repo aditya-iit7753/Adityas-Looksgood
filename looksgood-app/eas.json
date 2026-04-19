@@ -12,9 +12,10 @@
             "distribution":  "internal",
             "credentialsSource":  "local",
             "env":  {
-                "EXPO_PUBLIC_API_URL":  "http://192.168.1.6/api",
-                "EXPO_PUBLIC_API_URLS":  "http://192.168.1.6/api,http://192.168.1.6,https://www.looksgood.com/api,https://www.looksgood.com",
-                "EXPO_PUBLIC_WEB_FRONTEND_URL":  "http://192.168.1.6/"
+                "EXPO_PUBLIC_API_URL":  "https://looksgood-api-production.up.railway.app/api",
+                "EXPO_PUBLIC_API_URLS":  "https://looksgood-api-production.up.railway.app/api,https://looksgood-api-production.up.railway.app",
+                "EXPO_PUBLIC_WEB_FRONTEND_URL":  "https://looksgood-web-production.up.railway.app/",
+                "EXPO_PUBLIC_ANDROID_PLAY_BILLING_READY":  "false"
             },
             "android":  {
                 "buildType":  "apk"
@@ -24,9 +25,10 @@
                                      "autoIncrement":  true,
                                      "credentialsSource":  "local",
                                      "env":  {
-                                                 "EXPO_PUBLIC_API_URL":  "https://api.looksgood.com/api",
-                                                 "EXPO_PUBLIC_API_URLS":  "https://api.looksgood.com/api,https://api.looksgood.com,https://www.looksgood.com",
-                                                 "EXPO_PUBLIC_WEB_FRONTEND_URL":  "https://www.looksgood.com/"
+                                                 "EXPO_PUBLIC_API_URL":  "https://looksgood-api-production.up.railway.app/api",
+                                                 "EXPO_PUBLIC_API_URLS":  "https://looksgood-api-production.up.railway.app/api,https://looksgood-api-production.up.railway.app",
+                                                 "EXPO_PUBLIC_WEB_FRONTEND_URL":  "https://looksgood-web-production.up.railway.app/",
+                                                 "EXPO_PUBLIC_ANDROID_PLAY_BILLING_READY":  "false"
                                              },
                                      "android":  {
                                                      "buildType":  "app-bundle"

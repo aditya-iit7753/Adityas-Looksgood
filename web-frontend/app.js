@@ -1,18 +1,66 @@
-﻿const state = {
+function normalizeApiBase(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+const PUBLIC_API_DEFAULTS = [
+  "https://looksgood-api-production.up.railway.app/api",
+  "https://looksgood-api-production.up.railway.app",
+];
+
+function getRuntimeApiCandidates() {
+  const runtimeConfig = window.LOOKSGOOD_CONFIG || {};
+  const configuredUrl = normalizeApiBase(runtimeConfig.apiUrl || "");
+  const { hostname, origin } = window.location;
+  const candidates = [];
+  if (configuredUrl) candidates.push(configuredUrl);
+  candidates.push(...PUBLIC_API_DEFAULTS);
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    candidates.push("http://127.0.0.1:8100/api", "http://127.0.0.1:8100");
+  }
+  if (hostname === "looksgoods.com" || hostname === "www.looksgoods.com") {
+    candidates.push("https://api.looksgoods.com/api", "https://api.looksgoods.com");
+  }
+  candidates.push(`${origin.replace(/\/+$/, "")}/api`, origin.replace(/\/+$/, ""));
+
+  return [...new Set(candidates.map(normalizeApiBase).filter(Boolean))];
+}
+
+function getRuntimeApiBase() {
+  const candidates = getRuntimeApiCandidates();
+  return candidates[0] || "";
+}
+
+const state = {
   mode: "login",
   token: localStorage.getItem("lg_token") || "",
-  api: localStorage.getItem("lg_api") || "https://api.looksgood.com/api",
+  api: normalizeApiBase(localStorage.getItem("lg_api")) || getRuntimeApiBase(),
+  apiFallbacks: [],
   currentView: "feed",
   reelFilter: "all",
   reelItems: [],
   reelIndex: -1,
 };
 
+state.apiFallbacks = getRuntimeApiCandidates().filter((item) => item !== state.api);
+if (!state.api && state.apiFallbacks.length) {
+  state.api = state.apiFallbacks[0];
+  state.apiFallbacks = state.apiFallbacks.slice(1);
+}
+
 const el = (id) => document.getElementById(id);
 
 const authSection = el("authSection");
 const appSection = el("appSection");
 const statusChip = el("statusChip");
+const connectionChip = el("connectionChip");
+const apiHeadline = el("apiHeadline");
+const apiHeadlineSub = el("apiHeadlineSub");
+const connectionApiValue = el("connectionApiValue");
+const connectionStateValue = el("connectionStateValue");
+const connectionMessageValue = el("connectionMessageValue");
+const frontendUrlValue = el("frontendUrlValue");
+const sessionStateValue = el("sessionStateValue");
 const loginTab = el("loginTab");
 const signupTab = el("signupTab");
 const authBtn = el("authBtn");
@@ -25,6 +73,7 @@ const apiInput = el("apiInput");
 const listTitle = el("listTitle");
 const listRoot = el("listRoot");
 const storiesList = el("storiesList");
+const meetupsList = el("meetupsList");
 const reelFiltersWrap = el("reelFiltersWrap");
 const loadReelsBtn = el("loadReelsBtn");
 const filterChips = Array.from(document.querySelectorAll(".filter-chip"));
@@ -44,6 +93,9 @@ const reelCommentSendBtn = el("reelCommentSendBtn");
 const reelCounter = el("reelCounter");
 const reelPrevBtn = el("reelPrevBtn");
 const reelNextBtn = el("reelNextBtn");
+const meetupTitleInput = el("meetupTitleInput");
+const meetupDescriptionInput = el("meetupDescriptionInput");
+const meetupScheduleInput = el("meetupScheduleInput");
 let reelTouchStartY = null;
 let reelWheelLock = false;
 let reelChromeTimer = null;
@@ -51,9 +103,22 @@ let reelCommentsRequestSeq = 0;
 let reelLastTapTs = 0;
 
 apiInput.value = state.api;
+frontendUrlValue.textContent = `${window.location.origin.replace(/\/+$/, "")}/`;
 
 function showMessage(msg) {
   alert(msg);
+}
+
+function setConnectionState(kind, message, baseUrl = state.api) {
+  const normalized = String(kind || "checking").toLowerCase();
+  const label = normalized === "live" ? "API Live" : normalized === "offline" ? "API Offline" : "Checking";
+  connectionApiValue.textContent = baseUrl || "No API configured";
+  connectionStateValue.textContent = label;
+  connectionMessageValue.textContent = message || "Waiting for first check.";
+  apiHeadline.textContent = label;
+  apiHeadlineSub.textContent = message || "Waiting for API activity.";
+  connectionChip.textContent = label;
+  connectionChip.className = `chip ${normalized === "offline" ? "chip-danger" : normalized === "live" ? "" : "chip-muted"}`.trim();
 }
 
 function saveAuthToken(token) {
@@ -68,6 +133,7 @@ function refreshAuthUI() {
   authSection.classList.toggle("hidden", loggedIn);
   appSection.classList.toggle("hidden", !loggedIn);
   statusChip.textContent = loggedIn ? "Logged In" : "Not Logged In";
+  sessionStateValue.textContent = loggedIn ? "Authenticated" : "Guest";
 }
 
 function setMode(mode) {
@@ -95,27 +161,84 @@ function setActiveFilterChip() {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(`${state.api}${path}`, {
-    ...options,
-    headers: {
-      ...(options.headers || {}),
-      ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
-    },
-  });
+  const candidates = [...new Set([state.api, ...state.apiFallbacks, ...getRuntimeApiCandidates()].map(normalizeApiBase).filter(Boolean))];
+  let lastError = new Error("API request failed");
 
-  if (!res.ok) {
-    let msg = `${res.status}`;
+  for (const base of candidates) {
     try {
-      const body = await res.json();
-      msg = body.detail || body.error || JSON.stringify(body);
-    } catch (_) {}
-    throw new Error(msg);
+      const res = await fetch(`${base}${path}`, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        let msg = `${res.status}`;
+        try {
+          const body = await res.json();
+          msg = body.detail || body.error || JSON.stringify(body);
+        } catch (_) {}
+
+        const retryable = [404, 502, 503, 504].includes(res.status);
+        lastError = new Error(msg);
+        if (retryable) {
+          setConnectionState("checking", `Retrying after ${res.status} from ${base}`, base);
+          continue;
+        }
+        throw lastError;
+      }
+
+      state.api = base;
+      state.apiFallbacks = candidates.filter((item) => item !== base);
+      localStorage.setItem("lg_api", state.api);
+      apiInput.value = state.api;
+      setConnectionState("live", `Connected through ${base}`, base);
+
+      try {
+        return await res.json();
+      } catch (_) {
+        return null;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err || "API request failed"));
+      setConnectionState("offline", lastError.message || "Could not reach the API", base);
+    }
   }
 
+  throw lastError;
+}
+
+async function runHealthCheck() {
+  const candidates = [...new Set([state.api, ...state.apiFallbacks, ...getRuntimeApiCandidates()].map(normalizeApiBase).filter(Boolean))];
+  for (const base of candidates) {
+    try {
+      const res = await fetch(`${base}/health`);
+      if (!res.ok) continue;
+      state.api = base;
+      state.apiFallbacks = candidates.filter((item) => item !== base);
+      localStorage.setItem("lg_api", state.api);
+      apiInput.value = state.api;
+      setConnectionState("live", `Health check passed for ${base}`, base);
+      return true;
+    } catch (_) {}
+  }
+  setConnectionState("offline", "Health check failed for all configured API targets.");
+  return false;
+}
+
+async function refreshSession() {
+  if (!state.token) {
+    refreshAuthUI();
+    return false;
+  }
   try {
-    return await res.json();
+    await api("/auth/me");
+    refreshAuthUI();
+    return true;
   } catch (_) {
-    return null;
+    return false;
   }
 }
 
@@ -372,7 +495,12 @@ async function loadFeed() {
   setView("feed");
   listTitle.textContent = "Feed";
   try {
-    const data = await api("/feed");
+    let data;
+    try {
+      data = await api("/feed/ai");
+    } catch (_) {
+      data = await api("/feed");
+    }
     renderPosts(data, { reload: loadFeed });
     await renderStories();
   } catch (e) {
@@ -384,7 +512,12 @@ async function loadReels() {
   setView("reels");
   listTitle.textContent = `Reels - ${state.reelFilter[0].toUpperCase()}${state.reelFilter.slice(1)}`;
   try {
-    const data = await api("/feed");
+    let data;
+    try {
+      data = await api("/feed/ai");
+    } catch (_) {
+      data = await api("/feed");
+    }
     const reels = (data || [])
       .filter(isLikelyReel)
       .filter((item) => matchesReelFilter(item, state.reelFilter))
@@ -484,6 +617,92 @@ async function loadNotifications() {
   }
 }
 
+function renderMeetups(items) {
+  meetupsList.innerHTML = "";
+  if (!Array.isArray(items) || !items.length) {
+    meetupsList.innerHTML = `<div class="item"><strong>No meetups yet.</strong><div class="meta">Create one above to open a room from the web app.</div></div>`;
+    return;
+  }
+
+  items.forEach((meetup) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div class="meetup-head">
+        <div>
+          <strong>${meetup.title}</strong>
+          <div class="meta">Host: @${meetup.host_name || "host"}</div>
+          <div class="meta">${meetup.scheduled_at ? `Scheduled: ${new Date(meetup.scheduled_at).toLocaleString()}` : "Live anytime"}</div>
+        </div>
+        <div class="meetup-code">${meetup.room_code}</div>
+      </div>
+      <div>${meetup.description || "No description yet."}</div>
+      <div class="actions">
+        <button class="btn btn-sky join-btn">Join Room</button>
+        ${meetup.is_host ? `<button class="btn btn-grey delete-btn">Delete</button>` : ""}
+      </div>
+    `;
+
+    div.querySelector(".join-btn").onclick = () => {
+      window.open(`https://meet.jit.si/${meetup.room_code}`, "_blank", "noopener,noreferrer");
+    };
+
+    const deleteBtn = div.querySelector(".delete-btn");
+    if (deleteBtn) {
+      deleteBtn.onclick = async () => {
+        try {
+          await api(`/social/meetups/${meetup.id}`, { method: "DELETE" });
+          await loadMeetups();
+        } catch (e) {
+          showMessage(e.message);
+        }
+      };
+    }
+
+    meetupsList.appendChild(div);
+  });
+}
+
+async function loadMeetups(options = {}) {
+  const quiet = Boolean(options.quiet);
+  try {
+    const items = await api("/social/meetups");
+    renderMeetups(items);
+    if (!quiet) {
+      listTitle.textContent = "Virtual Rooms";
+      listRoot.innerHTML = `<div class="item"><strong>Virtual Rooms are live.</strong><div class="meta">Use the meetup board above to join or host rooms from the browser.</div></div>`;
+    }
+  } catch (e) {
+    renderMeetups([]);
+    if (!quiet) showMessage(e.message);
+  }
+}
+
+async function createMeetup() {
+  const title = meetupTitleInput.value.trim();
+  if (!title) return showMessage("Meetup title is required");
+
+  const scheduledAt = meetupScheduleInput.value ? new Date(meetupScheduleInput.value).toISOString() : null;
+  try {
+    await api("/social/meetups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        description: meetupDescriptionInput.value.trim(),
+        scheduled_at: scheduledAt,
+      }),
+    });
+    meetupTitleInput.value = "";
+    meetupDescriptionInput.value = "";
+    meetupScheduleInput.value = "";
+    await loadMeetups();
+    showMessage("Virtual meetup created");
+  } catch (e) {
+    showMessage(e.message);
+  }
+}
+
 loginTab.onclick = () => setMode("login");
 signupTab.onclick = () => setMode("signup");
 
@@ -525,17 +744,28 @@ forgotBtn.onclick = async () => {
 };
 
 el("saveApiBtn").onclick = () => {
-  state.api = apiInput.value.trim().replace(/\/+$/, "");
+  state.api = normalizeApiBase(apiInput.value);
+  state.apiFallbacks = getRuntimeApiCandidates().filter((item) => item !== state.api);
   localStorage.setItem("lg_api", state.api);
+  runHealthCheck();
   showMessage("API saved");
 };
 
+el("checkApiBtn").onclick = runHealthCheck;
 el("logoutBtn").onclick = () => saveAuthToken("");
 el("loadFeedBtn").onclick = loadFeed;
 loadReelsBtn.onclick = loadReels;
 el("loadUsersBtn").onclick = loadUsers;
 el("loadProfileBtn").onclick = loadProfile;
 el("loadNotiBtn").onclick = loadNotifications;
+el("loadMeetupsBtn").onclick = () => loadMeetups();
+el("createMeetupBtn").onclick = createMeetup;
+el("refreshMeetupsBtn").onclick = () => loadMeetups();
+el("heroFeedBtn").onclick = loadFeed;
+el("heroMeetupsBtn").onclick = () => loadMeetups();
+el("refreshSessionBtn").onclick = refreshSession;
+el("openFeedFromUtilityBtn").onclick = loadFeed;
+el("openPrivacyBtn").onclick = () => window.open("./privacy.html", "_blank", "noopener,noreferrer");
 
 filterChips.forEach((chip) => {
   chip.onclick = async () => {
@@ -761,11 +991,25 @@ el("saveProfileBtn").onclick = async () => {
   }
 };
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  });
+}
+
 setMode("login");
 setActiveFilterChip();
 setView("feed");
 refreshAuthUI();
-if (state.token) loadFeed();
+runHealthCheck();
+if (state.token) {
+  refreshSession().then((ok) => {
+    if (ok) loadFeed();
+    else loadMeetups({ quiet: true });
+  });
+} else {
+  loadMeetups({ quiet: true });
+}
 
 
 

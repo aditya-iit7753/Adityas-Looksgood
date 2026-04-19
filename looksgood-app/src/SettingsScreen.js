@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import API, { setAuthToken } from "./services/api";
+import API, { getActiveApiBaseUrl, setAuthToken } from "./services/api";
+import { PRIVACY_POLICY_URL } from "./services/links";
 import { loadSettings, saveSettings } from "./services/settingsStorage";
 import { clearToken } from "./services/authStorage";
 import { colors, fonts, radius } from "./theme";
@@ -24,6 +25,7 @@ export default function SettingsScreen({ navigation }) {
   const introAnim = useRef(new Animated.Value(0)).current;
   const { height } = useWindowDimensions();
   const compact = height < 760;
+  const activeApiBaseUrl = getActiveApiBaseUrl();
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -109,6 +111,14 @@ export default function SettingsScreen({ navigation }) {
     ]);
   };
 
+  const openPrivacyPolicy = () => {
+    if (!PRIVACY_POLICY_URL) {
+      Alert.alert("Unavailable", "Privacy policy URL is not configured for this build.");
+      return;
+    }
+    navigation.navigate("WebFrontend", { title: "Privacy Policy", url: PRIVACY_POLICY_URL });
+  };
+
   const heroTranslateY = introAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
 
   return (
@@ -188,6 +198,33 @@ export default function SettingsScreen({ navigation }) {
             onValueChange={setAllowMessageRequests}
             icon="chatbubble-ellipses-outline"
           />
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="radio-outline" size={16} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Connection Center</Text>
+          </View>
+          <BodyText style={styles.policyText}>Current mobile API target:</BodyText>
+          <Text style={styles.connectionValue}>{activeApiBaseUrl || "No API URL configured"}</Text>
+          <Pressable onPress={() => navigation.navigate("ConnectionCenter")} style={({ pressed }) => [styles.policyBtn, pressed && styles.policyBtnPressed]}>
+            <Ionicons name="open-outline" size={16} color={colors.primary} />
+            <Text style={styles.policyBtnText}>Open Connection Center</Text>
+          </Pressable>
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Privacy Policy</Text>
+          </View>
+          <BodyText style={styles.policyText}>
+            Review how LooksGood handles account details, uploaded media, camera, microphone, and support requests.
+          </BodyText>
+          <Pressable onPress={openPrivacyPolicy} style={({ pressed }) => [styles.policyBtn, pressed && styles.policyBtnPressed]}>
+            <Ionicons name="open-outline" size={16} color={colors.primary} />
+            <Text style={styles.policyBtnText}>Open Privacy Policy</Text>
+          </Pressable>
         </Card>
 
         <PrimaryButton title={saving ? "Saving..." : "Save Settings"} onPress={onSave} loading={saving || loading} />
@@ -410,6 +447,35 @@ const styles = StyleSheet.create({
   noteText: {
     marginTop: 2,
     fontSize: 12,
+  },
+  connectionValue: {
+    color: colors.text,
+    fontFamily: fonts.mono,
+    fontSize: 12,
+  },
+  policyText: {
+    marginTop: 2,
+  },
+  policyBtn: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "#D6D6D6",
+    borderRadius: radius.md,
+    backgroundColor: "#F8F8F8",
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  policyBtnPressed: {
+    opacity: 0.88,
+  },
+  policyBtnText: {
+    color: colors.primary,
+    fontFamily: fonts.body,
+    fontWeight: "800",
   },
   logoutCard: {
     backgroundColor: "#FFFFFF",

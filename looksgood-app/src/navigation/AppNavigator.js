@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { clearToken, loadToken, saveToken } from "../services/authStorage";
-import API, { setAuthToken } from "../services/api";
+import API, { isApiUnavailableError, setAuthToken } from "../services/api";
 import { AgentProvider } from "../agent/AgentContext";
 import GlobalVoiceAgent from "../GlobalVoiceAgent";
 
@@ -34,12 +34,15 @@ import ARFiltersScreen from "../ARFiltersScreen";
 import Avatar3DScreen from "../Avatar3DScreen";
 import TrendsScreen from "../TrendsScreen";
 import AppAgentScreen from "../AppAgentScreen";
+import ConnectionCenterScreen from "../ConnectionCenterScreen";
+import VirtualRoomsScreen from "../VirtualRoomsScreen";
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
 export default function AppNavigator() {
   const [ready, setReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [bootstrapConnectionHint, setBootstrapConnectionHint] = useState("");
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -53,11 +56,18 @@ export default function AppNavigator() {
             setAuthToken(refreshedToken);
             await saveToken(refreshedToken);
           }
+          setBootstrapConnectionHint("");
           setIsAuthenticated(true);
-        } catch (_err) {
-          setAuthToken(null);
-          await clearToken();
-          setIsAuthenticated(false);
+        } catch (err) {
+          if (isApiUnavailableError(err)) {
+            setBootstrapConnectionHint(err?.message || "Cached session restored, but the API is temporarily unreachable.");
+            setIsAuthenticated(true);
+          } else {
+            setAuthToken(null);
+            await clearToken();
+            setBootstrapConnectionHint("");
+            setIsAuthenticated(false);
+          }
         }
       }
       setReady(true);
@@ -88,7 +98,12 @@ export default function AppNavigator() {
               headerTitleStyle: { fontFamily: fonts.body, fontWeight: "800" },
             }}>
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Feed" component={FeedScreen} options={{ title: "" }} />
+            <Stack.Screen
+              name="Feed"
+              component={FeedScreen}
+              initialParams={bootstrapConnectionHint ? { connectionHint: bootstrapConnectionHint } : undefined}
+              options={{ title: "" }}
+            />
             <Stack.Screen name="Discover" component={DiscoverScreen} options={{ title: "People" }} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: "Profile" }} />
             <Stack.Screen name="Comments" component={CommentsScreen} options={{ title: "Comments" }} />
@@ -96,7 +111,11 @@ export default function AppNavigator() {
             <Stack.Screen name="StyleDNA" component={StyleDNAScreen} options={{ title: "Style DNA" }} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: "Notifications" }} />
             <Stack.Screen name="StoryViewer" component={StoryViewerScreen} options={{ title: "Story" }} />
-            <Stack.Screen name="WebFrontend" component={WebFrontendScreen} options={{ title: "Web UI" }} />
+            <Stack.Screen
+              name="WebFrontend"
+              component={WebFrontendScreen}
+              options={({ route }) => ({ title: route?.params?.title || "Web UI" })}
+            />
             <Stack.Screen name="Upload" component={UploadScreen} options={{ title: "New Look" }} />
             <Stack.Screen name="Generate" component={GenerateScreen} options={{ title: "AI Generate" }} />
             <Stack.Screen name="AIAgent" component={AIAgentScreen} options={{ title: "Creative Studio" }} />
@@ -107,6 +126,8 @@ export default function AppNavigator() {
             <Stack.Screen name="CloseFriends" component={CloseFriendsScreen} options={{ title: "Close Friends" }} />
             <Stack.Screen name="ARFilters" component={ARFiltersScreen} options={{ title: "AR Filters" }} />
             <Stack.Screen name="Avatar3D" component={Avatar3DScreen} options={{ title: "3D Avatars" }} />
+            <Stack.Screen name="VirtualRooms" component={VirtualRoomsScreen} options={{ title: "Virtual Rooms" }} />
+            <Stack.Screen name="ConnectionCenter" component={ConnectionCenterScreen} options={{ title: "Connection Center" }} />
             <Stack.Screen name="Trends" component={TrendsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AppAgent" component={AppAgentScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: "Settings" }} />

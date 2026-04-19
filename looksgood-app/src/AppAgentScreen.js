@@ -25,6 +25,14 @@ const ALLOWED_ROUTES = new Set([
   "AIAgent",
   "Trends",
   "AppAgent",
+  "StyleDNA",
+  "Generate",
+  "CreatorChat",
+  "CloseFriends",
+  "ARFilters",
+  "Avatar3D",
+  "WebFrontend",
+  "Preview",
 ]);
 
 function guessAudioMime(uri) {
@@ -40,6 +48,22 @@ function guessAudioMime(uri) {
 
 function safeString(value) {
   return String(value || "").trim();
+}
+
+function normalizeActionList(payload) {
+  const list = Array.isArray(payload?.actions) ? payload.actions : [];
+  if (list.length) {
+    return list.filter((entry) => entry && typeof entry === "object").slice(0, 5);
+  }
+  if (payload?.action && typeof payload.action === "object") {
+    return [payload.action];
+  }
+  return [{ type: "unknown" }];
+}
+
+function actionPreview(actions) {
+  const names = actions.map((entry) => safeString(entry?.type) || "unknown").filter(Boolean);
+  return names.join(" -> ");
 }
 
 async function findUserByHandle(handle) {
@@ -61,7 +85,8 @@ export default function AppAgentScreen({ navigation, route }) {
   const [recording, setRecording] = useState(null);
   const [input, setInput] = useState("");
   const [log, setLog] = useState([]);
-  const [pendingAction, setPendingAction] = useState(null);
+  const [pendingActions, setPendingActions] = useState([]);
+  const [pendingFeatureSpec, setPendingFeatureSpec] = useState(null);
   const scrollRef = useRef(null);
   const handsFreeRef = useRef(false);
   const handsFreeLoopBusyRef = useRef(false);
@@ -149,6 +174,13 @@ export default function AppAgentScreen({ navigation, route }) {
         return;
       }
 
+      if (type === "mark_notifications_read") {
+        await API.post("/social/notifications/read-all");
+        pushLog({ role: "assistant", text: "Notifications marked as read." });
+        navigation.navigate("Notifications");
+        return;
+      }
+
       if (type === "follow_user") {
         const username = safeString(action.username);
         const user = await findUserByHandle(username);
@@ -191,9 +223,71 @@ export default function AppAgentScreen({ navigation, route }) {
         return;
       }
 
+      if (type === "like_post" || type === "save_post" || type === "unsave_post" || type === "share_post" || type === "comment_post") {
+        const postId = Number(action.post_id);
+        if (!Number.isFinite(postId) || postId <= 0) {
+          pushLog({ role: "assistant", text: "Post ID is missing for that action." });
+          return;
+        }
+
+        if (type === "like_post") {
+          await API.post(`/social/posts/${postId}/like`);
+          pushLog({ role: "assistant", text: `Liked post ${postId}.` });
+          return;
+        }
+        if (type === "save_post") {
+          await API.post(`/social/posts/${postId}/save`);
+          pushLog({ role: "assistant", text: `Saved post ${postId}.` });
+          return;
+        }
+        if (type === "unsave_post") {
+          await API.delete(`/social/posts/${postId}/save`);
+          pushLog({ role: "assistant", text: `Removed post ${postId} from saved.` });
+          return;
+        }
+        if (type === "share_post") {
+          await API.post(`/social/posts/${postId}/share`);
+          pushLog({ role: "assistant", text: `Shared post ${postId}.` });
+          return;
+        }
+        if (type === "comment_post") {
+          const comment = safeString(action.comment);
+          if (!comment) {
+            pushLog({ role: "assistant", text: "Comment text is missing." });
+            return;
+          }
+          await API.post(`/social/posts/${postId}/comments`, { content: comment });
+          pushLog({ role: "assistant", text: `Commented on post ${postId}.` });
+          return;
+        }
+      }
+
+      if (type === "propose_feature") {
+        const title = safeString(action?.feature_spec?.title) || "New Feature";
+        pushLog({ role: "assistant", text: `Feature draft ready: ${title}.` });
+        navigation.navigate("AIAgent");
+        return;
+      }
+
       pushLog({ role: "assistant", text: "I understood the command but can't run that action yet." });
     },
     [navigation, pushLog]
+  );
+
+  const executeActions = useCallback(
+    async (actions) => {
+      const steps = Array.isArray(actions) ? actions.filter((entry) => entry && typeof entry === "object") : [];
+      if (!steps.length) return;
+
+      for (const action of steps) {
+        try {
+          await executeAction(action);
+        } catch (err) {
+          pushLog({ role: "assistant", text: err?.response?.data?.detail || err?.message || "Action step failed." });
+        }
+      }
+    },
+    [executeAction, pushLog]
   );
 
   const transcribeUri = useCallback(
@@ -225,17 +319,33 @@ export default function AppAgentScreen({ navigation, route }) {
 
       pushLog({ role: "user", text: clean });
       setBusy(true);
-      setPendingAction(null);
+      setPendingActions([]);
+      setPendingFeatureSpec(null);
       try {
         const res = await API.post("/ai/lsg/command", { text: clean, screen: screenName });
         const reply = safeString(res?.data?.reply) || "Done.";
-        const action = res?.data?.action && typeof res.data.action === "object" ? res.data.action : { type: "unknown" };
-        pushLog({ role: "assistant", text: reply, meta: { intent: res?.data?.intent, provider: res?.data?.provider } });
+        const actions = normalizeActionList(res?.data);
+        const runnableActions = actions.filter((entry) => safeString(entry?.type).toLowerCase() !== "unknown");
+        const featureSpec = res?.data?.feature_spec && typeof res?.data?.feature_spec === "object" ? res.data.feature_spec : null;
+        pushLog({
+          role: "assistant",
+          text: reply,
+          meta: {
+            intent: res?.data?.intent,
+            provider: res?.data?.provider,
+            steps: Math.max(1, runnableActions.length || actions.length),
+          },
+        });
+
+        if (featureSpec?.title) {
+          pushLog({ role: "assistant", text: `Feature draft: ${featureSpec.title}` });
+        }
 
         if (autoRun) {
-          await executeAction(action);
+          await executeActions(runnableActions);
         } else {
-          setPendingAction(action);
+          setPendingActions(runnableActions);
+          setPendingFeatureSpec(featureSpec);
         }
       } catch (err) {
         if (Number(err?.response?.status) === 402) {
@@ -247,7 +357,7 @@ export default function AppAgentScreen({ navigation, route }) {
         setBusy(false);
       }
     },
-    [autoRun, executeAction, pushLog, screenName]
+    [autoRun, executeActions, navigation, pushLog, screenName]
   );
 
   const runCommandTextFast = useCallback(
@@ -257,13 +367,23 @@ export default function AppAgentScreen({ navigation, route }) {
 
       pushLog({ role: "user", text: clean });
       setBusy(true);
-      setPendingAction(null);
+      setPendingActions([]);
+      setPendingFeatureSpec(null);
       try {
         const res = await API.post("/ai/lsg/command", { text: clean, screen: screenName });
         const reply = safeString(res?.data?.reply) || "Done.";
-        const action = res?.data?.action && typeof res.data.action === "object" ? res.data.action : { type: "unknown" };
-        pushLog({ role: "assistant", text: reply, meta: { intent: res?.data?.intent, provider: res?.data?.provider } });
-        await executeAction(action);
+        const actions = normalizeActionList(res?.data);
+        const runnableActions = actions.filter((entry) => safeString(entry?.type).toLowerCase() !== "unknown");
+        pushLog({
+          role: "assistant",
+          text: reply,
+          meta: {
+            intent: res?.data?.intent,
+            provider: res?.data?.provider,
+            steps: Math.max(1, runnableActions.length || actions.length),
+          },
+        });
+        await executeActions(runnableActions);
       } catch (err) {
         if (Number(err?.response?.status) === 402) {
           navigation.navigate("Paywall");
@@ -274,7 +394,7 @@ export default function AppAgentScreen({ navigation, route }) {
         setBusy(false);
       }
     },
-    [executeAction, pushLog, screenName]
+    [executeActions, navigation, pushLog, screenName]
   );
 
   const startHandsFreeChunk = useCallback(async () => {
@@ -401,18 +521,19 @@ export default function AppAgentScreen({ navigation, route }) {
   }, [recording, pushLog, runCommandText, transcribeUri]);
 
   const runPending = useCallback(async () => {
-    const action = pendingAction;
-    if (!action) return;
-    setPendingAction(null);
+    const actions = Array.isArray(pendingActions) ? pendingActions : [];
+    if (!actions.length) return;
+    setPendingActions([]);
+    setPendingFeatureSpec(null);
     setBusy(true);
     try {
-      await executeAction(action);
+      await executeActions(actions);
     } catch (err) {
       pushLog({ role: "assistant", text: err?.response?.data?.detail || err?.message || "Action failed." });
     } finally {
       setBusy(false);
     }
-  }, [executeAction, pendingAction, pushLog]);
+  }, [executeActions, pendingActions, pushLog]);
 
   return (
     <Screen padded={false}>
@@ -446,36 +567,51 @@ export default function AppAgentScreen({ navigation, route }) {
             {recording ? "Listening..." : "Listening"}
           </Chip>
         ) : null}
-        <Chip>Say: Hey LSG open reels, follow @name, set bio to ...</Chip>
+        <Chip>Say: Hey LSG open reels then follow @name, or create a new feature for ...</Chip>
       </View>
 
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
         {log.length === 0 ? (
           <Card>
             <Title size={22}>Try a command</Title>
-            <BodyText>Examples: "Open trends", "Follow @alex", "Set my bio to minimal streetwear lover", "Message @alex hi".</BodyText>
+            <BodyText>Examples: Open trends, Follow @alex, Set my bio to minimal streetwear lover, Message @alex hi.</BodyText>
           </Card>
         ) : null}
 
         {log.map((item) => (
           <View key={item.id} style={[styles.bubble, item.role === "user" ? styles.bubbleUser : styles.bubbleAssistant]}>
             <Text style={[styles.bubbleText, item.role === "user" ? styles.bubbleTextUser : styles.bubbleTextAssistant]}>{item.text}</Text>
-            {item.meta?.provider ? <Text style={styles.metaText}>{String(item.meta.provider)}</Text> : null}
+            {item.meta?.provider ? <Text style={styles.metaText}>{`${String(item.meta.provider)} · ${Number(item.meta.steps || 1)} step(s)`}</Text> : null}
           </View>
         ))}
 
-        {pendingAction ? (
+        {pendingActions.length ? (
           <Card style={{ gap: 10 }}>
-            <Text style={styles.pendingTitle}>Ready to run</Text>
-            <BodyText>{`Action: ${safeString(pendingAction.type) || "unknown"}`}</BodyText>
+            <Text style={styles.pendingTitle}>Ready to run plan</Text>
+            <BodyText>{`Steps: ${pendingActions.length}`}</BodyText>
+            <BodyText>{`Plan: ${actionPreview(pendingActions)}`}</BodyText>
             <View style={styles.pendingRow}>
-              <Pressable onPress={() => setPendingAction(null)} disabled={busy} style={({ pressed }) => [styles.secondaryBtn, pressed && styles.secondaryBtnPressed]}>
+              <Pressable
+                onPress={() => {
+                  setPendingActions([]);
+                  setPendingFeatureSpec(null);
+                }}
+                disabled={busy}
+                style={({ pressed }) => [styles.secondaryBtn, pressed && styles.secondaryBtnPressed]}>
                 <Text style={styles.secondaryBtnText}>Cancel</Text>
               </Pressable>
               <Pressable onPress={runPending} disabled={busy} style={({ pressed }) => [styles.primaryBtn, pressed && styles.primaryBtnPressed, busy && styles.disabledBtn]}>
                 <Text style={styles.primaryBtnText}>{busy ? "Running..." : "Run"}</Text>
               </Pressable>
             </View>
+          </Card>
+        ) : null}
+
+        {pendingFeatureSpec?.title ? (
+          <Card style={{ gap: 8 }}>
+            <Text style={styles.pendingTitle}>Feature Draft</Text>
+            <BodyText>{pendingFeatureSpec.title}</BodyText>
+            <BodyText>{safeString(pendingFeatureSpec.proposal)}</BodyText>
           </Card>
         ) : null}
 

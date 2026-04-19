@@ -16,6 +16,17 @@ function safeString(value) {
   return String(value || "").trim();
 }
 
+function normalizeActionList(payload) {
+  const list = Array.isArray(payload?.actions) ? payload.actions : [];
+  if (list.length) {
+    return list.filter((entry) => entry && typeof entry === "object").slice(0, 5);
+  }
+  if (payload?.action && typeof payload.action === "object") {
+    return [payload.action];
+  }
+  return [{ type: "unknown" }];
+}
+
 function guessAudioMime(uri) {
   const value = String(uri || "").toLowerCase();
   if (value.endsWith(".m4a")) return "audio/m4a";
@@ -134,6 +145,14 @@ export default function GlobalVoiceAgent({ navigationRef, enabled = true }) {
         return;
       }
 
+      if (type === "mark_notifications_read") {
+        await API.post("/social/notifications/read-all");
+        if (navigationRef?.isReady?.() && navigationRef?.navigate) {
+          navigationRef.navigate("Notifications");
+        }
+        return;
+      }
+
       if (type === "update_bio") {
         const bio = safeString(action?.bio);
         if (!bio) return;
@@ -174,9 +193,59 @@ export default function GlobalVoiceAgent({ navigationRef, enabled = true }) {
         if (navigationRef?.isReady?.() && navigationRef?.navigate) {
           navigationRef.navigate("ChatRoom", { userId: user.id, username: user.username });
         }
+        return;
+      }
+
+      if (type === "like_post" || type === "save_post" || type === "unsave_post" || type === "share_post" || type === "comment_post") {
+        const postId = Number(action?.post_id);
+        if (!Number.isFinite(postId) || postId <= 0) return;
+
+        if (type === "like_post") {
+          await API.post(`/social/posts/${postId}/like`);
+          return;
+        }
+        if (type === "save_post") {
+          await API.post(`/social/posts/${postId}/save`);
+          return;
+        }
+        if (type === "unsave_post") {
+          await API.delete(`/social/posts/${postId}/save`);
+          return;
+        }
+        if (type === "share_post") {
+          await API.post(`/social/posts/${postId}/share`);
+          return;
+        }
+        if (type === "comment_post") {
+          const comment = safeString(action?.comment);
+          if (!comment) return;
+          await API.post(`/social/posts/${postId}/comments`, { content: comment });
+          return;
+        }
+      }
+
+      if (type === "propose_feature") {
+        if (navigationRef?.isReady?.() && navigationRef?.navigate) {
+          navigationRef.navigate("AppAgent");
+        }
       }
     },
     [navigationRef]
+  );
+
+  const executeActions = useCallback(
+    async (actions) => {
+      const steps = Array.isArray(actions) ? actions.filter((entry) => entry && typeof entry === "object") : [];
+      if (!steps.length) return;
+      for (const action of steps) {
+        try {
+          await executeAction(action);
+        } catch {
+          // ignore failures and continue remaining steps
+        }
+      }
+    },
+    [executeAction]
   );
 
   const runLoopOnce = useCallback(async () => {
@@ -238,16 +307,17 @@ export default function GlobalVoiceAgent({ navigationRef, enabled = true }) {
 
       const res = await API.post("/ai/lsg/command", { text: command, screen: "global" });
       const reply = safeString(res?.data?.reply) || "Done.";
-      const action = res?.data?.action && typeof res.data.action === "object" ? res.data.action : { type: "unknown" };
-      setStatusText(reply);
-      await executeAction(action);
+      const actions = normalizeActionList(res?.data);
+      const runnableActions = actions.filter((entry) => safeString(entry?.type).toLowerCase() !== "unknown");
+      setStatusText(runnableActions.length > 1 ? `${reply} (${runnableActions.length} steps)` : reply);
+      await executeActions(runnableActions);
     } catch (_err) {
       setStatusText("");
     } finally {
       setBusy(false);
       loopBusyRef.current = false;
     }
-  }, [busy, canRunHere, enabled, executeAction, setHandsFreeEnabled, transcribeUri]);
+  }, [busy, canRunHere, enabled, executeActions, setHandsFreeEnabled, transcribeUri]);
 
   useEffect(() => {
     if (!enabled || !ready || !handsFreeEnabled) return;

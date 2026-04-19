@@ -1,7 +1,7 @@
-# VPS commands (looksgood.com)
+# VPS commands (looksgoods.com)
 
 Assumptions:
-- DNS `looksgood.com` + `www.looksgood.com` already point to your VPS IP.
+- DNS `looksgoods.com` + `www.looksgoods.com` already point to your VPS IP.
 - You are inside the repo on the VPS (same folder that contains `docker-compose.prod.yml`).
 
 ## 1) Create `.env.production`
@@ -18,7 +18,7 @@ Fill at minimum:
 
 ## 2) Start the stack (HTTP)
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.production --profile bootstrap up -d --build
 docker compose -f docker-compose.prod.yml ps
 curl -i http://127.0.0.1/api/health
 ```
@@ -27,15 +27,19 @@ curl -i http://127.0.0.1/api/health
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm certbot certonly \
   --webroot -w /var/www/certbot \
-  -d looksgood.com -d www.looksgood.com --cert-name looksgood.com \
+  -d looksgoods.com -d www.looksgoods.com --cert-name looksgoods.com \
   --email you@example.com --agree-tos --no-eff-email
 
-docker compose -f docker-compose.prod.yml --env-file .env.production restart web
+# Switch to HTTPS-enabled nginx
+docker compose -f docker-compose.prod.yml --env-file .env.production --profile https up -d --build
+# Stop the bootstrap HTTP-only nginx
+docker compose -f docker-compose.prod.yml --env-file .env.production stop web_bootstrap
 ```
 
 ## 4) Verify HTTPS
 ```bash
-curl -i https://www.looksgood.com/api/health
-curl -i https://www.looksgood.com/
+curl -i https://www.looksgoods.com/api/health
+curl -i https://www.looksgoods.com/
 ```
+
 

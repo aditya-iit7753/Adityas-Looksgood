@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+from typing import cast
 import urllib.error
 import urllib.request
 import uuid
@@ -39,7 +40,7 @@ class PublishFromUrlRequest(BaseModel):
     product_ids: list[int] | str | None = None
 
 
-def _safe_video_extension(filename: str) -> str:
+def _safe_video_extension(filename: str | None) -> str:
     ext = Path(str(filename or "")).suffix.lower()
     return ext if ext in ALLOWED_VIDEO_EXTENSIONS else ".mp4"
 
@@ -208,6 +209,7 @@ def _ensure_products_owned(db: Session, user_id: int, product_ids: list[int]) ->
     if len(products) != len(set(product_ids)):
         raise HTTPException(status_code=400, detail="One or more product IDs are invalid")
 
+
 def _generated_video_url(request: Request, source_path: str) -> str:
     dest = GENERATED_DIR / f"video-{uuid.uuid4().hex}.mp4"
     shutil.copyfile(source_path, dest)
@@ -247,6 +249,8 @@ async def publish_video(
 ):
     if image is None and video is None:
         raise HTTPException(status_code=400, detail="Upload an image or video")
+
+    current_user_id = cast(int, current_user.id)
 
     trim_start = _parse_trim_seconds(trim_start_seconds, "trim_start_seconds")
     trim_end = _parse_trim_seconds(trim_end_seconds, "trim_end_seconds")
@@ -292,6 +296,8 @@ async def publish_video(
         except Exception:
             video_url = _generated_video_url(request, uploaded_video_path)
     else:
+        if image is None:
+            raise HTTPException(status_code=400, detail="Upload an image when no video is provided")
         image_path = str(temp_dir / f"{uuid.uuid4()}.jpg")
         generated_video_path = str(temp_dir / f"{uuid.uuid4()}.mp4")
 
@@ -305,20 +311,21 @@ async def publish_video(
         except Exception:
             video_url = _generated_video_url(request, generated_video_path)
 
-    post = Post(user_id=current_user.id, caption=safe_caption, media_url=video_url, **meta)
+    post = Post(user_id=current_user_id, caption=safe_caption, media_url=video_url, **meta)
     db.add(post)
     db.flush()
+    post_id = cast(int, post.id)
     product_ids_list = parse_product_ids(product_ids)
     if product_ids_list:
-        _ensure_products_owned(db, current_user.id, product_ids_list)
-        apply_post_product_tags(db, post.id, product_ids_list)
+        _ensure_products_owned(db, current_user_id, product_ids_list)
+        apply_post_product_tags(db, post_id, product_ids_list)
     db.commit()
     db.refresh(post)
 
     return {
         "status": "published",
         "video_url": video_url,
-        "post_id": post.id,
+        "post_id": post_id,
         "source": "video_upload" if video is not None else "image_generated",
     }
 
@@ -395,6 +402,7 @@ def publish_from_url(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    current_user_id = cast(int, current_user.id)
     media_url = str(data.media_url or "").strip()
     if not media_url.lower().startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="media_url must be a valid URL")
@@ -411,31 +419,24 @@ def publish_from_url(
     )
 
     post = Post(
-        user_id=current_user.id,
+        user_id=current_user_id,
         caption=str(data.caption or "").strip()[:500],
         media_url=media_url,
         **meta,
     )
     db.add(post)
     db.flush()
+    post_id = cast(int, post.id)
     product_ids_list = parse_product_ids(data.product_ids)
     if product_ids_list:
-        _ensure_products_owned(db, current_user.id, product_ids_list)
-        apply_post_product_tags(db, post.id, product_ids_list)
+        _ensure_products_owned(db, current_user_id, product_ids_list)
+        apply_post_product_tags(db, post_id, product_ids_list)
     db.commit()
     db.refresh(post)
 
     return {
         "status": "published",
         "video_url": media_url,
-        "post_id": post.id,
+        "post_id": post_id,
         "source": "existing_media",
     }
-
-
-
-
-
-
-
-

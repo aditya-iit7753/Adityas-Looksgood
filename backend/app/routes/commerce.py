@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request

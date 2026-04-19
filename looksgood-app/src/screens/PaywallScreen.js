@@ -1,7 +1,9 @@
 import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import API from "../services/api";
+import { PRIVACY_POLICY_URL } from "../services/links";
+import { usesPlaySafeAndroidPaywall } from "../services/monetization";
 import { colors, fonts } from "../theme";
-import { BodyText, Card, PrimaryButton, Screen, Title } from "../ui";
+import { BodyText, Card, PrimaryButton, Screen, SecondaryButton, Title } from "../ui";
 
 export default function PaywallScreen({ navigation }) {
   const upgradeDevOnly = async (plan) => {
@@ -30,42 +32,84 @@ export default function PaywallScreen({ navigation }) {
     }
   };
 
+  const openPrivacyPolicy = () => {
+    if (!PRIVACY_POLICY_URL) {
+      Alert.alert("Privacy policy unavailable", "Add a public web frontend URL to open the privacy policy.");
+      return;
+    }
+    navigation.navigate("WebFrontend", { title: "Privacy Policy", url: PRIVACY_POLICY_URL });
+  };
+
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 24, gap: 10 }} showsVerticalScrollIndicator={false}>
-        <Title size={30}>Go Pro</Title>
-        <BodyText style={{ marginBottom: 10 }}>Unlock AI features, higher limits, and remove ads.</BodyText>
+        <Title size={30}>{usesPlaySafeAndroidPaywall ? "Premium Access" : "Go Pro"}</Title>
+        <BodyText style={{ marginBottom: 10 }}>
+          {usesPlaySafeAndroidPaywall
+            ? "This Android build keeps premium sign-in access, but it does not sell digital subscriptions in-app yet."
+            : "Unlock AI features, higher limits, and remove ads."}
+        </BodyText>
 
-        <PlanCard
-          title="Pro"
-          price="$9/month"
-          details="For regular creators who post daily."
-          onPress={() => checkout("pro")}
-        />
-        <PlanCard
-          title="Creator"
-          price="$19/month"
-          details="For power users with high volume output."
-          onPress={() => checkout("creator")}
-        />
+        {usesPlaySafeAndroidPaywall ? (
+          <>
+            <Card>
+              <Text style={{ fontSize: 20, color: colors.text, fontWeight: "800", fontFamily: fonts.display }}>Play-safe Android build</Text>
+              <BodyText>
+                Existing members keep their access after signing in. New in-app subscription sales stay disabled here until Google Play Billing is
+                wired up.
+              </BodyText>
+              <BodyText>Premium plans still include ad-free viewing, higher AI limits, and creator tools once billing is ready.</BodyText>
+            </Card>
 
-        <Pressable onPress={() => navigation.goBack()} style={{ alignItems: "center", marginTop: 4 }}>
-          <Text style={{ color: colors.subtext, fontWeight: "700", fontFamily: fonts.body }}>Continue on Free</Text>
-        </Pressable>
+            {typeof __DEV__ === "boolean" && __DEV__ ? (
+              <>
+                <PlanCard title="Dev unlock Pro" details="Testing shortcut for local Android builds." onPress={() => upgradeDevOnly("pro")} />
+                <PlanCard
+                  title="Dev unlock Creator"
+                  details="Testing shortcut for higher quota local Android builds."
+                  onPress={() => upgradeDevOnly("creator")}
+                />
+              </>
+            ) : null}
+
+            <PrimaryButton title="Continue on Free" onPress={() => navigation.goBack()} />
+            <SecondaryButton title="Privacy Policy" onPress={openPrivacyPolicy} disabled={!PRIVACY_POLICY_URL} />
+          </>
+        ) : (
+          <>
+            <PlanCard
+              title="Pro"
+              price="$9/month"
+              details="For regular creators who post daily."
+              onPress={() => checkout("pro")}
+            />
+            <PlanCard
+              title="Creator"
+              price="$19/month"
+              details="For power users with high volume output."
+              onPress={() => checkout("creator")}
+            />
+
+            <Pressable onPress={() => navigation.goBack()} style={{ alignItems: "center", marginTop: 4 }}>
+              <Text style={{ color: colors.subtext, fontWeight: "700", fontFamily: fonts.body }}>Continue on Free</Text>
+            </Pressable>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
 }
 
 function PlanCard({ title, price, details, onPress }) {
+  const actionEnabled = typeof onPress === "function";
   return (
     <Card>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Text style={{ fontSize: 20, color: colors.text, fontWeight: "800", fontFamily: fonts.display }}>{title}</Text>
-        <Text style={{ color: colors.primary, fontWeight: "800", fontFamily: fonts.body }}>{price}</Text>
+        {price ? <Text style={{ color: colors.primary, fontWeight: "800", fontFamily: fonts.body }}>{price}</Text> : null}
       </View>
       <BodyText>{details}</BodyText>
-      <PrimaryButton title={`Choose ${title}`} onPress={onPress} />
+      {actionEnabled ? <PrimaryButton title={`Choose ${title}`} onPress={onPress} /> : null}
     </Card>
   );
 }

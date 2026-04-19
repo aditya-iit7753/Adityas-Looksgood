@@ -1,4 +1,4 @@
-﻿import json
+import json
 import math
 import random
 import re

@@ -6,6 +6,11 @@ from dotenv import dotenv_values
 _BASE_DIR = Path(__file__).resolve().parents[1]
 _PROJECT_ROOT = _BASE_DIR.parent
 _ORIGINAL_ENV_KEYS = set(os.environ)
+_EXPLICIT_APP_ENV = str(os.getenv("APP_ENV", "") or "").strip().lower()
+_IS_REMOTE_RUNTIME = any(
+    os.getenv(name)
+    for name in ("RAILWAY_ENVIRONMENT", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RENDER")
+)
 
 
 def _load_env_file(path: Path) -> None:
@@ -17,7 +22,15 @@ def _load_env_file(path: Path) -> None:
         os.environ[key] = value
 
 
-for _env_file in (_PROJECT_ROOT / ".env", _BASE_DIR / ".env", _BASE_DIR / ".env.local"):
+_ENV_FILES = []
+if not (_EXPLICIT_APP_ENV in {"prod", "production"} or _IS_REMOTE_RUNTIME):
+    _ENV_FILES.extend((_PROJECT_ROOT / ".env", _BASE_DIR / ".env", _BASE_DIR / ".env.local"))
+else:
+    production_env = _PROJECT_ROOT / ".env.production"
+    if production_env.exists():
+        _ENV_FILES.append(production_env)
+
+for _env_file in _ENV_FILES:
     _load_env_file(_env_file)
 
 

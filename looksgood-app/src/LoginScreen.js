@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import API, { setAuthToken } from "./services/api";
+import API, { getActiveApiBaseUrl, isApiUnavailableError, setAuthToken } from "./services/api";
 import { getOrCreateDeviceId, saveToken } from "./services/authStorage";
 import { colors, fonts, radius } from "./theme";
 import { PrimaryButton, Screen, Title } from "./ui";
@@ -27,6 +27,19 @@ export default function LoginScreen({ navigation }) {
   }, [introAnim]);
 
   const headerTranslateY = introAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
+  const activeApiBaseUrl = getActiveApiBaseUrl();
+
+  const showAuthError = (title, error, fallbackMessage) => {
+    const attemptedUrl = error?.config ? `${error.config.baseURL || ""}${error.config.url || ""}` : "";
+    const detail = [error?.message, attemptedUrl && `URL: ${attemptedUrl}`].filter(Boolean).join("\n");
+    const actions = isApiUnavailableError(error)
+      ? [
+          { text: "Close", style: "cancel" },
+          { text: "Connection Center", onPress: () => navigation.navigate("ConnectionCenter") },
+        ]
+      : [{ text: "OK" }];
+    Alert.alert(title, detail || fallbackMessage, actions);
+  };
 
   const handleSocialAuth = async (provider) => {
     if (socialLoading) return;
@@ -38,9 +51,7 @@ export default function LoginScreen({ navigation }) {
       await saveToken(res.data?.token);
       navigation.replace("Feed");
     } catch (error) {
-      const attemptedUrl = error?.config ? `${error.config.baseURL || ""}${error.config.url || ""}` : "";
-      const detail = [error?.message, attemptedUrl && `URL: ${attemptedUrl}`].filter(Boolean).join("\n");
-      Alert.alert("Social login failed", detail || "Please try again.");
+      showAuthError("Social login failed", error, "Please try again.");
     } finally {
       setSocialLoading(false);
     }
@@ -64,9 +75,7 @@ export default function LoginScreen({ navigation }) {
       await saveToken(res.data?.token);
       navigation.replace("Feed");
     } catch (error) {
-      const attemptedUrl = error?.config ? `${error.config.baseURL || ""}${error.config.url || ""}` : "";
-      const detail = [error?.message, attemptedUrl && `URL: ${attemptedUrl}`].filter(Boolean).join("\n");
-      Alert.alert(mode === "signup" ? "Sign up failed" : "Login failed", detail || "Please try again.");
+      showAuthError(mode === "signup" ? "Sign up failed" : "Login failed", error, "Please try again.");
     } finally {
       setLoading(false);
     }
@@ -174,9 +183,18 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Pressable onPress={showForgot ? () => setShowForgot(false) : openForgot} style={styles.forgotBtn}>
-            <Text style={styles.forgotBtnText}>
-              {showForgot ? "Back to login" : "Forgot password?"}
-            </Text>
+            <Text style={styles.forgotBtnText}>{showForgot ? "Back to login" : "Forgot password?"}</Text>
+          </Pressable>
+
+          <Pressable onPress={() => navigation.navigate("ConnectionCenter")} style={styles.connectionHelpBtn}>
+            <Ionicons name="radio-outline" size={16} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.connectionHelpTitle}>Connection help</Text>
+              <Text style={styles.connectionHelpSub} numberOfLines={1}>
+                {activeApiBaseUrl || "No API URL configured"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.subtext} />
           </Pressable>
         </View>
       </ScrollView>
@@ -381,6 +399,30 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "700",
     fontFamily: fonts.body,
+  },
+  connectionHelpBtn: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "#E2E2E2",
+    borderRadius: radius.md,
+    backgroundColor: "#FBFBFB",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  connectionHelpTitle: {
+    color: colors.text,
+    fontFamily: fonts.body,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  connectionHelpSub: {
+    color: colors.subtext,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    marginTop: 1,
   },
   modalBackdrop: {
     flex: 1,

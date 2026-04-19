@@ -46,10 +46,15 @@ const isHttpsUrl = (url) => /^https:\/\//i.test(String(url || "").trim());
 const hasExplicitPort = (url) => /^https?:\/\/[^/]+:\d+/i.test(String(url || "").trim());
 const API_PORTS = [8100, 8110, 8000];
 const DEFAULT_PROD_PATHS = ["", "/api"];
+const DEFAULT_PUBLIC_API_CANDIDATES = [
+  "https://looksgood-api-production.up.railway.app/api",
+  "https://looksgood-api-production.up.railway.app",
+];
 const getExpoHostUri = () =>
   Constants.expoConfig?.hostUri ??
   Constants.manifest2?.extra?.expoClient?.hostUri ??
   Constants.manifest?.debuggerHost;
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const parseUrlParts = (value) => {
   const normalized = normalizeUrl(value);
@@ -87,7 +92,8 @@ const explicitApiCandidates = () => {
   const envPrimary = splitCsv(process.env.EXPO_PUBLIC_API_URL);
   const envList = splitCsv(process.env.EXPO_PUBLIC_API_URLS);
   const expoPrimary = splitCsv(Constants.expoConfig?.extra?.apiUrl ?? Constants.manifest?.extra?.apiUrl);
-  const unique = [...new Set([...envPrimary, ...envList, ...expoPrimary].map(normalizeUrl).filter(Boolean))].filter((candidate) => {
+  const publicDefaults = isReleaseRuntime ? DEFAULT_PUBLIC_API_CANDIDATES : [];
+  const unique = [...new Set([...envPrimary, ...envList, ...expoPrimary, ...publicDefaults].map(normalizeUrl).filter(Boolean))].filter((candidate) => {
     if (!isReleaseRuntime) return true;
     return isHttpsUrl(candidate) && isRoutablePublicHost(hostFromUrl(candidate));
   });
@@ -245,6 +251,7 @@ const API_DISCOVERY_COOLDOWN_MS = 15000;
 let apiBaseDiscoveryPromise = null;
 let hasResolvedReachableApiBase = false;
 let lastApiDiscoveryAttemptAt = 0;
+const API_UNREACHABLE_HINT = "Open Connection Center to retry.";
 
 const rememberActiveApiBase = (baseUrl) => {
   const normalized = trim(baseUrl);
@@ -330,6 +337,7 @@ const ensureApiBaseConfigured = () => {
 
 export const API_BASE_URL = activeApiBaseUrl;
 export const getActiveApiBaseUrl = () => activeApiBaseUrl;
+export const getApiBaseCandidates = () => [...new Set([activeApiBaseUrl, ...API_BASE_CANDIDATES].filter(Boolean))];
 
 const deriveWebFrontendUrl = () => {
   const explicitWeb = trim(
@@ -355,6 +363,91 @@ const deriveWebFrontendUrl = () => {
 
 export const WEB_FRONTEND_URL =
   deriveWebFrontendUrl();
+
+const normalizeRequestPath = (value) => `/${String(value || "").replace(/^\/+/, "")}`;
+const looksLikeNetworkMessage = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("network error") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("api unreachable") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("socket hang up") ||
+    normalized.includes("connection refused") ||
+    normalized.includes("unable to reach api")
+  );
+};
+
+export const isApiUnavailableError = (error) => {
+  if (!error) return false;
+  if (!error?.response && looksLikeNetworkMessage(error?.message || error)) {
+    return true;
+  }
+  const status = Number(error?.response?.status || 0);
+  if (status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  return looksLikeNetworkMessage(error?.message || "");
+};
+
+const getDiagnosticCandidates = () =>
+  [
+    ...new Set(
+      [
+        activeApiBaseUrl,
+        toggleApiBase(activeApiBaseUrl),
+        ...API_BASE_CANDIDATES,
+        ...API_BASE_CANDIDATES.map((candidate) => toggleApiBase(candidate)),
+      ].filter(Boolean)
+    ),
+  ].sort((left, right) => scoreApiCandidate(right) - scoreApiCandidate(left));
+
+export const runApiDiagnostics = async () => {
+  const results = [];
+  for (const candidate of getDiagnosticCandidates().slice(0, 10)) {
+    try {
+      const response = await axios.get(joinUrl(candidate, "health"), {
+        timeout: 2500,
+        headers: { Accept: "application/json" },
+        transitional: { clarifyTimeoutError: true },
+      });
+      const ok = response?.status >= 200 && response?.status < 300;
+      results.push({
+        baseUrl: candidate,
+        ok,
+        status: Number(response?.status || 0),
+        detail: response?.data?.status || response?.statusText || "reachable",
+      });
+      if (ok) {
+        rememberActiveApiBase(candidate);
+      }
+    } catch (error) {
+      results.push({
+        baseUrl: candidate,
+        ok: false,
+        status: Number(error?.response?.status || 0),
+        detail: formatDetail(error?.response?.data?.detail) || error?.message || "Unreachable",
+      });
+    }
+  }
+
+  return {
+    activeBaseUrl: getActiveApiBaseUrl(),
+    webFrontendUrl: WEB_FRONTEND_URL,
+    reachable: results.some((entry) => entry.ok),
+    results,
+  };
+};
+
+export const repairApiConnection = async () => {
+  const diagnostics = await runApiDiagnostics();
+  if (!diagnostics.reachable) {
+    throw new Error(`API is still unreachable at ${getActiveApiBaseUrl() || "the configured API URL"}. ${API_UNREACHABLE_HINT}`);
+  }
+  return diagnostics;
+};
 
 let authToken = null;
 
@@ -385,7 +478,7 @@ const formatDetail = (detail) => {
 
 const API = axios.create({
   baseURL: activeApiBaseUrl,
-  timeout: 20000,
+  timeout: 30000,
 });
 
 const toggleApiBase = (base) => {
@@ -442,8 +535,8 @@ API.interceptors.response.use(
     const isNetworkFailure = !error?.response;
     const status = Number(error?.response?.status);
     const requestUrl = String(config?.url || "");
-    const normalizedRequestUrl = requestUrl.split("?")[0];
-    const isAuthRequest = requestUrl.startsWith("/auth/");
+    const normalizedRequestUrl = normalizeRequestPath(requestUrl.split("?")[0]);
+    const isAuthRequest = /^\/auth\//i.test(normalizedRequestUrl);
     const isRetryableGatewayError = status === 502 || status === 503 || status === 504;
     const isRetryableMissingRoute =
       status === 404 &&
@@ -467,6 +560,17 @@ API.interceptors.response.use(
         } catch (retryError) {
           return Promise.reject(retryError);
         }
+      }
+    }
+
+    // Retry once on the same public endpoint in case the backend was cold or a transient mobile network failure occurred.
+    if (config && (isNetworkFailure || isRetryableGatewayError) && !config.__sameBaseRetried) {
+      try {
+        config.__sameBaseRetried = true;
+        await delay(1200);
+        return await API.request(config);
+      } catch (retryError) {
+        error = retryError;
       }
     }
 
@@ -506,7 +610,7 @@ API.interceptors.response.use(
       "Network request failed";
     const friendly =
       message === "Network Error" || String(message).toLowerCase().includes("fetch failed")
-        ? `${message}. API unreachable at ${activeApiBaseUrl || "missing API URL configuration"}.`
+        ? `${message}. API unreachable at ${activeApiBaseUrl || "missing API URL configuration"}. ${API_UNREACHABLE_HINT}`
         : statusText >= 500
         ? `Server error (${statusText}). Please retry.`
         : message;
